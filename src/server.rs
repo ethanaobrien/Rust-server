@@ -22,18 +22,29 @@ pub struct Request {
     method: String,
     stream: TcpStream,
     headers: Vec<Header>,
+    out_headers: Vec<Header>,
     status_code: i32,
     status_message: String,
     headers_written: bool
 }
 
 impl Request {
-    pub fn new(stream:TcpStream, method:String, path:String) -> Request {
+    pub fn new(stream:TcpStream, head:String) -> Request {
+        let lines = head.split("\r\n").collect::<Vec<_>>();
+        let parts = lines[0].split(" ").collect::<Vec<_>>();
+        let mut headers = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if i == 0 { continue; };
+            let headerSplit = line.split(": ").collect::<Vec<_>>();
+            if headerSplit.len() < 2 { continue; };
+            headers.push(Header::new(headerSplit[0], headerSplit[1]));
+        }
         Request {
-            method: method,
-            path: path,
+            method: parts[0].to_string(),
+            path: parts[1].to_string(),
             stream: stream,
-            headers: Vec::new(),
+            headers: headers,
+            out_headers: Vec::new(),
             status_code: 200,
             status_message: String::from("OK"),
             headers_written: false
@@ -48,7 +59,7 @@ impl Request {
             self.set_header("Transfer-Encoding", "Chunked");
         }
         let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()).to_string();
-        for value in self.headers.iter() {
+        for value in self.out_headers.iter() {
             let key = value.name.to_owned()+": "+value.value.as_str();
             header += &("\r\n".to_owned()+key.as_str());
         }
@@ -83,10 +94,19 @@ impl Request {
     pub fn write_string(&mut self, data:&str) {
         self.write(data.to_string().as_bytes());
     }
+    pub fn get_header(&mut self, header:&str) -> String {
+        let head = self.format_header(header).to_string();
+        for key in self.headers.iter() {
+            if key.name == head {
+                return key.value.as_str().to_string();
+            }
+        }
+        return String::new();
+    }
     pub fn header_value_equals(&mut self, header:&str, value:&str) -> bool {
         let head = header.to_string();
         let val = value.to_string();
-        for key in self.headers.iter() {
+        for key in self.out_headers.iter() {
             if key.name == head {
                 return key.value.to_lowercase() == val.to_lowercase();
             }
@@ -95,7 +115,7 @@ impl Request {
     }
     pub fn header_exists(&mut self, header:&str) -> bool {
         let head = header.to_string();
-        for key in self.headers.iter() {
+        for key in self.out_headers.iter() {
             if key.name == head {
                 return true;
             }
@@ -105,20 +125,21 @@ impl Request {
     pub fn set_header(&mut self, header:&str, value:&str) {
         // Are these header names and values valid?
         let new_header = Header::new(self.format_header(header).as_str(), value);
-        for key in self.headers.iter_mut() {
+        for key in self.out_headers.iter_mut() {
             if key.name == new_header.name {
                 *key = new_header;
                 return;
             }
         }
         
-        self.headers.push(new_header);
+        self.out_headers.push(new_header);
     }
     pub fn set_status(&mut self, code:i32, msg:&str) {
         self.status_code = code;
         self.status_message = msg.to_string();
     }
     pub fn end(mut self) {
+        if !self.headers_written { self.send_headers(); };
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
         if chunked {
             self.stream.write("0\r\n\r\n".as_bytes()).unwrap();
@@ -146,8 +167,7 @@ pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
                     break;
                 }
             }
-            let parts = request.split("\r\n").collect::<Vec<_>>()[0].split(" ").collect::<Vec<_>>();
-            (on_request)(Request::new(stream, parts[0].to_string(), parts[1].to_string()));
+            (on_request)(Request::new(stream, request));
         });
     }
 }
