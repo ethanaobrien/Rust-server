@@ -37,7 +37,10 @@ impl Request {
             status_message: String::from("OK")
         }
     }
-    fn write(&mut self, data:&[u8]) {
+    pub fn write(&mut self, data:&[u8]) {
+        if !self.header_exists("Content-Length") {
+            self.set_header("Content-Length", data.len().to_string().as_str());
+        }
         let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()+"\r\n").to_string();
         for value in self.headers.iter() {
             let key = value.name.to_owned()+": "+value.value.as_str();
@@ -47,13 +50,35 @@ impl Request {
         self.stream.write(header.as_bytes()).unwrap();
         self.stream.write(data).unwrap();
     }
+    fn format_header(&self, header:&str) -> String {
+        let binding = header.to_string();
+        let mut parts: Vec<String> = binding.split("-").map(|s| s.to_string()).collect();
+        for part in parts.iter_mut() {
+            *part = part.to_lowercase();
+            let capitalized_char = part.chars().next().unwrap().to_uppercase().next().unwrap();
+            let mut result = String::with_capacity(part.len());
+            result.push(capitalized_char);
+            result.push_str(&part[1..]);
+            *part = result;
+        }
+        return parts.join("-").to_string();
+    }
     pub fn write_string(&mut self, data:&str) {
         self.write(data.to_string().as_bytes());
     }
+    pub fn header_exists(&mut self, header:&str) -> bool {
+        let head = header.to_string();
+        for key in self.headers.iter() {
+            if key.name == head {
+                return true;
+            }
+        }
+        return false;
+    }
     pub fn set_header(&mut self, header:&str, value:&str) {
         // Are these header names and values valid?
-        let new_header = Header::new(header, value);
-        for mut key in self.headers.iter_mut() {
+        let new_header = Header::new(self.format_header(header).as_str(), value);
+        for key in self.headers.iter_mut() {
             if key.name == new_header.name {
                 *key = new_header;
                 return;
