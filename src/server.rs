@@ -23,7 +23,8 @@ pub struct Request {
     stream: TcpStream,
     headers: Vec<Header>,
     status_code: i32,
-    status_message: String
+    status_message: String,
+    headers_written: bool
 }
 
 impl Request {
@@ -34,21 +35,31 @@ impl Request {
             stream: stream,
             headers: Vec::new(),
             status_code: 200,
-            status_message: String::from("OK")
+            status_message: String::from("OK"),
+            headers_written: false
         }
     }
-    pub fn write(&mut self, data:&[u8]) {
+    pub fn send_headers(&mut self) {
         if !self.header_exists("Content-Length") {
-            self.set_header("Content-Length", data.len().to_string().as_str());
+            self.set_header("Transfer-Encoding", "Chunked");
         }
-        let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()+"\r\n").to_string();
+        let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()).to_string();
         for value in self.headers.iter() {
             let key = value.name.to_owned()+": "+value.value.as_str();
-            header += &(key.to_owned()+"\r\n");
+            header += &("\r\n".to_owned()+key.as_str());
         }
-        header += "\r\n";
+        header += "\r\n\r\n";
         self.stream.write(header.as_bytes()).unwrap();
+    }
+    pub fn write(&mut self, data:&[u8]) {
+        let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
+        if chunked {
+            self.stream.write((format!("{:x}", data.len())+"\r\n").as_bytes()).unwrap();
+        }
         self.stream.write(data).unwrap();
+        if chunked {
+            self.stream.write("\r\n".as_bytes()).unwrap();
+        }
     }
     fn format_header(&self, header:&str) -> String {
         let binding = header.to_string();
@@ -65,6 +76,16 @@ impl Request {
     }
     pub fn write_string(&mut self, data:&str) {
         self.write(data.to_string().as_bytes());
+    }
+    pub fn header_value_equals(&mut self, header:&str, value:&str) -> bool {
+        let head = header.to_string();
+        let val = value.to_string();
+        for key in self.headers.iter() {
+            if key.name == head {
+                return key.value.to_lowercase() == val.to_lowercase();
+            }
+        }
+        return false;
     }
     pub fn header_exists(&mut self, header:&str) -> bool {
         let head = header.to_string();
@@ -91,7 +112,13 @@ impl Request {
         self.status_code = code;
         self.status_message = msg.to_string();
     }
-    pub fn end(self) {
+    pub fn end(mut self) {
+        let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
+        if chunked {
+            self.stream.write("0\r\n\r\n".as_bytes()).unwrap();
+        } else {
+            self.stream.write("\r\n\r\n".as_bytes()).unwrap();
+        }
         drop(self.stream);
     }
     

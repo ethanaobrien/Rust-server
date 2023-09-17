@@ -10,7 +10,8 @@ fn on_request(mut res:Request) {
     res.set_header("Connection", "close");
     res.set_header("Content-Type", "text/plain");
     res.set_status(200, "OK");
-    res.write_string("Hello");
+    res.send_headers();
+    res.write_string("Helloooooooooooooooo");
     res.end();
     
     //need accept-ranges, type, length, date, keep alive
