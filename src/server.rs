@@ -40,6 +40,10 @@ impl Request {
         }
     }
     pub fn send_headers(&mut self) {
+        if self.headers_written {
+            println!("Headers already sent!");
+            return;
+        }
         if !self.header_exists("Content-Length") {
             self.set_header("Transfer-Encoding", "Chunked");
         }
@@ -50,8 +54,10 @@ impl Request {
         }
         header += "\r\n\r\n";
         self.stream.write(header.as_bytes()).unwrap();
+        self.headers_written = true;
     }
     pub fn write(&mut self, data:&[u8]) {
+        if !self.headers_written { self.send_headers(); };
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
         if chunked {
             self.stream.write((format!("{:x}", data.len())+"\r\n").as_bytes()).unwrap();
@@ -121,7 +127,6 @@ impl Request {
         }
         drop(self.stream);
     }
-    
 }
 
 pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
