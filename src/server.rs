@@ -99,6 +99,7 @@ impl Request<'_> {
         if !self.header_exists("Content-Length") {
             self.set_header("Transfer-Encoding", "Chunked");
         }
+        //TODO - send date header
         let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()).to_string();
         for value in self.out_headers.iter() {
             let key = value.name.to_owned()+": "+value.value.as_str();

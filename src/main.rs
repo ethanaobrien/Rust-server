@@ -19,6 +19,4 @@ fn on_request(mut res:Request) {
     res.write_string("yes");
     res.end();
     
-    //need accept-ranges, type, length, date, keep alive
-    
 }
