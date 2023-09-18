@@ -4,10 +4,13 @@ use std::net::TcpListener;
 use std::thread;
 use std::io::Read;
 
+
+#[allow(dead_code)]
 struct Header {
     name: String,
     value: String
 }
+#[allow(dead_code)]
 impl Header {
     pub fn new(header:&str, value:&str) -> Header {
         Header {
@@ -17,27 +20,40 @@ impl Header {
     }
 }
 
-pub struct Request {
-    path: String,
-    method: String,
-    stream: TcpStream,
+#[allow(dead_code)]
+pub struct Request<'a> {
+    pub path: String,
+    pub method: String,
+    stream: &'a TcpStream,
     headers: Vec<Header>,
     out_headers: Vec<Header>,
     status_code: i32,
     status_message: String,
-    headers_written: bool
+    headers_written: bool,
+    length: i32,
+    consumed: i32
 }
 
-impl Request {
-    pub fn new(stream:TcpStream, head:String) -> Request {
+#[allow(dead_code)]
+impl Request<'_> {
+    pub fn new(stream:&TcpStream, head:String) -> Request {
         let lines = head.split("\r\n").collect::<Vec<_>>();
         let parts = lines[0].split(" ").collect::<Vec<_>>();
         let mut headers = Vec::new();
+        let mut length = 0;
         for (i, line) in lines.iter().enumerate() {
             if i == 0 { continue; };
-            let headerSplit = line.split(": ").collect::<Vec<_>>();
-            if headerSplit.len() < 2 { continue; };
-            headers.push(Header::new(headerSplit[0], headerSplit[1]));
+            let header_split = line.split(": ").collect::<Vec<_>>();
+            if header_split.len() < 2 { continue; };
+            headers.push(Header::new(header_split[0], header_split[1]));
+            if header_split[0].to_lowercase() == "content-length" {
+                match header_split[1].parse::<i32>() {
+                    Ok(num) => {
+                        length = num;
+                    },
+                    Err(_e) => {/*nada*/},
+                }
+            }
         }
         Request {
             method: parts[0].to_string(),
@@ -47,7 +63,9 @@ impl Request {
             out_headers: Vec::new(),
             status_code: 200,
             status_message: String::from("OK"),
-            headers_written: false
+            headers_written: false,
+            length: length,
+            consumed: 0
         }
     }
     pub fn send_headers(&mut self) {
@@ -146,8 +164,24 @@ impl Request {
         } else {
             self.stream.write("\r\n\r\n".as_bytes()).unwrap();
         }
-        drop(self.stream);
+        //drop(self.stream);
     }
+}
+
+fn read_header(mut stream:&TcpStream, on_request:fn(res:Request)) -> bool {
+        let mut buffer = [0; 1];
+        let mut request = String::new();
+        while let Ok(bytes_read) = stream.read(&mut buffer) {
+            if bytes_read == 0 {
+                return false;
+            }
+            request += &String::from_utf8_lossy(&buffer[..bytes_read]);
+            if request.ends_with("\r\n\r\n") {
+                break;
+            }
+        }
+        (on_request)(Request::new(stream, request));
+        return true;
 }
 
 pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
@@ -155,19 +189,9 @@ pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
     println!("Server started on http://{}:{}/", host, port);
     for stream in listener.incoming() {
         thread::spawn(move || {
-            let mut stream = stream.unwrap();
-            let mut buffer = [0; 1];
-            let mut request = String::new();
-            while let Ok(bytes_read) = stream.read(&mut buffer) {
-                if bytes_read == 0 {
-                    break;
-                }
-                request += &String::from_utf8_lossy(&buffer[..bytes_read]);
-                if request.ends_with("\r\n\r\n") {
-                    break;
-                }
+            while read_header(stream.as_ref().unwrap(), on_request) {
+                // keep alive
             }
-            (on_request)(Request::new(stream, request));
         });
     }
 }
