@@ -30,8 +30,8 @@ pub struct Request<'a> {
     status_code: i32,
     status_message: String,
     headers_written: bool,
-    length: i32,
-    consumed: i32
+    length: usize,
+    consumed: usize
 }
 
 #[allow(dead_code)]
@@ -47,7 +47,7 @@ impl Request<'_> {
             if header_split.len() < 2 { continue; };
             headers.push(Header::new(header_split[0], header_split[1]));
             if header_split[0].to_lowercase() == "content-length" {
-                match header_split[1].parse::<i32>() {
+                match header_split[1].parse::<usize>() {
                     Ok(num) => {
                         length = num;
                     },
@@ -68,7 +68,30 @@ impl Request<'_> {
             consumed: 0
         }
     }
-    pub fn send_headers(&mut self) {
+    pub fn read(&mut self, bytes:usize) -> Vec<u8> {
+        let mut bytes = bytes;
+        if self.consumed + bytes > self.length || bytes == 0 {
+            //Consume the whole/rest of the body
+            bytes = self.length - self.consumed;
+        }
+        if bytes <= 0 {
+            return b"".to_vec();
+        }
+        let mut buffer = vec![0; bytes];
+        let Ok(bytes_read) = self.stream.read(&mut buffer) else {
+            println!("Read error");
+            return b"".to_vec();
+        };
+        //println!("{} bytes read", bytes_read);
+        self.consumed += bytes_read;
+        return buffer;
+    }
+    pub fn read_string(&mut self, bytes:usize) -> String {
+        let read = self.read(bytes);
+        let msg = &String::from_utf8_lossy(&read[..read.len()]);
+        return msg.to_string();
+    }
+    fn send_headers(&mut self) {
         if self.headers_written {
             println!("Headers already sent!");
             return;
@@ -164,24 +187,24 @@ impl Request<'_> {
         } else {
             self.stream.write("\r\n\r\n".as_bytes()).unwrap();
         }
-        //drop(self.stream);
+        //
     }
 }
 
 fn read_header(mut stream:&TcpStream, on_request:fn(res:Request)) -> bool {
-        let mut buffer = [0; 1];
-        let mut request = String::new();
-        while let Ok(bytes_read) = stream.read(&mut buffer) {
-            if bytes_read == 0 {
-                return false;
-            }
-            request += &String::from_utf8_lossy(&buffer[..bytes_read]);
-            if request.ends_with("\r\n\r\n") {
-                break;
-            }
+    let mut buffer = [0; 1];
+    let mut request = String::new();
+    while let Ok(bytes_read) = stream.read(&mut buffer) {
+        if bytes_read == 0 {
+            return false;
         }
-        (on_request)(Request::new(stream, request));
-        return true;
+        request += &String::from_utf8_lossy(&buffer[..bytes_read]);
+        if request.ends_with("\r\n\r\n") {
+            break;
+        }
+    }
+    (on_request)(Request::new(stream, request));
+    return true;
 }
 
 pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
@@ -192,6 +215,7 @@ pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
             while read_header(stream.as_ref().unwrap(), on_request) {
                 // keep alive
             }
+            drop(stream);
         });
     }
 }

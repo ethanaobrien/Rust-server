@@ -8,11 +8,15 @@ fn main() {
 
 fn on_request(mut res:Request) {
     res.set_header("Connection", "keep-alive");
-    res.set_header("Content-Type", "text/html");
+    res.set_header("Content-Type", "text/plain");
     res.set_status(200, "OK");
     //let host = res.get_header("Host");
     //res.write_string(("Host: ".to_string() + &host).as_str());
-    res.write_string("");
+    if res.method == "PUT" {
+        let read = res.read_string(0);
+        println!("Got message: {}", read);
+    }
+    res.write_string("yes");
     res.end();
     
     //need accept-ranges, type, length, date, keep alive
