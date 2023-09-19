@@ -272,7 +272,7 @@ impl Request<'_> {
             println!("Headers must not yet be sent when using send_file");
             return 500;
         }
-        self.set_header("content-type", "text/html");
+        self.set_header("content-type", "text/html; charset=utf-8");
         let Ok(paths) = fs::read_dir(path) else {
             return 404;
         };
