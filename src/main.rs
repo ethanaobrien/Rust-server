@@ -9,13 +9,15 @@ fn main() {
 
 fn on_request(mut res:Request) {
     //let base_path = "C:/Users/ethan/git/EmulatorJS";
-    let base_path = "C:/Users/ethan/git/t";
+    let base_path = "C:/Users/ethan/Videos/Captures";
     res.set_header("Connection", "keep-alive");
     res.set_header("Accept-ranges", "bytes");
     
     //todo, should be set by backend
     if res.path.ends_with(".flac") {
         res.set_header("Content-Type", "audio/flac");
+    } else if res.path.ends_with(".mp4") {
+        res.set_header("Content-Type", "video/mp4");
     } else {
         res.set_header("Content-Type", "text/html");
     }

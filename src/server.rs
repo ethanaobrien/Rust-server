@@ -81,7 +81,8 @@ pub struct Request<'a> {
     headers_written: bool,
     length: usize,
     consumed: usize,
-    finished: bool
+    finished: bool,
+    connection_closed: bool
 }
 
 #[allow(dead_code)]
@@ -117,7 +118,8 @@ impl Request<'_> {
             headers_written: false,
             length: length,
             consumed: 0,
-            finished: false
+            finished: false,
+            connection_closed: false
         }
     }
     pub fn read(&mut self, bytes:usize) -> Vec<u8> {
@@ -162,6 +164,7 @@ impl Request<'_> {
         self.headers_written = true;
     }
     fn write_to_stream(&mut self, data:&[u8]) -> bool {
+        if self.connection_closed { return false; };
         let mut rv = true;
         match self.stream.write(data) {
             Ok(_e) => {
@@ -169,6 +172,7 @@ impl Request<'_> {
             },
             Err(_e) => {
                 rv = false;
+                self.connection_closed = true;
             },
         };
         return rv;
@@ -307,12 +311,15 @@ impl Request<'_> {
         self.set_header("content-length", &content_length.to_string());
         self.set_status(code, if code == 200 { "OK" } else { "Partial Content" });
         while written < content_length {
+            if self.connection_closed { break; };
             let chunk_size : usize = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
+            if chunk_size == 0 { break; };
             let mut buffer = vec![0; chunk_size];
             let Ok(_) = file.read(&mut buffer) else { todo!() };
             self.write(&buffer);
             written += chunk_size
         }
+        drop(file);
         self.end();
         return true;
     }
