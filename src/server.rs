@@ -5,6 +5,9 @@ use std::io::{ Read, Write, SeekFrom, Seek };
 use std::fs::File;
 use std::str;
 
+mod mime;
+use crate::server::mime::get_mime_type;
+
 pub fn url_decode(input: &str) -> String {
     let mut decoded = String::new();
     let mut bytes = input.bytes();
@@ -269,6 +272,8 @@ impl Request<'_> {
         let Ok(mut file) = File::open(path) else {
             return false;
         };
+        let ext = path.split(".").last().unwrap();
+        self.set_header("content-type", get_mime_type(ext));
         let size : usize = file.metadata().unwrap().len().try_into().unwrap();
         let mut written : usize = 0;
         
