@@ -2,6 +2,7 @@ use std::net::TcpStream;
 use std::net::TcpListener;
 use std::thread;
 use std::io::{ Read, Write, SeekFrom, Seek };
+use std::fs;
 use std::fs::File;
 use std::str;
 
@@ -261,6 +262,33 @@ impl Request<'_> {
         } else {
             self.write_to_stream("\r\n\r\n".as_bytes());
         }
+    }
+    pub fn directory_listing(&mut self, path:&str) -> bool {
+        if self.headers_written {
+            println!("Headers must not yet be sent when using send_file");
+            return false;
+        }
+        self.set_header("content-type", "text/html");
+        let Ok(paths) = fs::read_dir(path) else {
+            return false;
+        };
+        let mut to_send = String::from("<html><head><style>li.directory {background:#aab}</style></head><body><a href=\"../\">parent</a><ul>");
+        for path in paths {
+            let file = path.unwrap();
+            let name = file.path().display().to_string();
+            let file_name = name.split("/").last().unwrap_or("");
+            if file.path().is_dir() {
+                to_send += &("<li class=\"directory\"><a href=\"".to_owned() + file_name + "/\">" + file_name + "</a></li>");
+            } else {
+                to_send += &("<li><a href=\"".to_owned() + file_name + "\">" + file_name + "</a></li>");
+            }
+        }
+        to_send += "</ul></body></html>";
+        let bytes = to_send.as_bytes();
+        self.set_header("content-length", &bytes.len().to_string());
+        self.write(bytes);
+        
+        return true;
     }
     pub fn send_file(&mut self, path:&str) -> bool {
         if self.headers_written {

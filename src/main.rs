@@ -22,12 +22,17 @@ fn on_request(mut res:Request) {
     //res.write_string("yes");
     
     res.set_status(200, "OK");
-    let success = res.send_file(&(base_path.to_owned() + &url_decode(&res.path)));
+    let success = res.send_file(&(base_path.to_owned() + &url_decode(&res.path.split("?").collect::<Vec<_>>()[0])));
     //println!("{}", success);
     if !success {
-        res.write_string("Error");
-        res.end();
+        let s2 = res.directory_listing(&(base_path.to_owned() + &url_decode(&res.path.split("?").collect::<Vec<_>>()[0])));
+        if !s2 {
+            //is this 404?
+            res.set_status(500, "Internal Server Error");
+            res.write_string("Error");
+        }
+        //res.end();
     }
-    //res.end();
+    res.end();
     
 }
