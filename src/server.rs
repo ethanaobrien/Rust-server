@@ -9,6 +9,9 @@ use std::str;
 mod mime;
 use crate::server::mime::get_mime_type;
 
+mod httpcodes;
+use crate::server::httpcodes::get_http_message;
+
 pub fn url_decode(input: &str) -> String {
     let mut decoded = String::new();
     let mut bytes = input.bytes();
@@ -248,9 +251,9 @@ impl Request<'_> {
         
         self.out_headers.push(new_header);
     }
-    pub fn set_status(&mut self, code:i32, msg:&str) {
+    pub fn set_status(&mut self, code:i32) {
         self.status_code = code;
-        self.status_message = msg.to_string();
+        self.status_message = get_http_message(code);
     }
     pub fn end(&mut self) {
         if self.finished { return; };
@@ -263,14 +266,15 @@ impl Request<'_> {
             self.write_to_stream("\r\n\r\n".as_bytes());
         }
     }
-    pub fn directory_listing(&mut self, path:&str) -> bool {
+    //The directory_listing and send_file functions will return either 404, 500, or 200
+    pub fn directory_listing(&mut self, path:&str) -> i32 {
         if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
-            return false;
+            return 500;
         }
         self.set_header("content-type", "text/html");
         let Ok(paths) = fs::read_dir(path) else {
-            return false;
+            return 404;
         };
         let mut to_send = String::from("<html><head><style>li.directory {background:#aab}</style></head><body><a href=\"../\">parent</a><ul>");
         for path in paths {
@@ -288,17 +292,17 @@ impl Request<'_> {
         self.set_header("content-length", &bytes.len().to_string());
         self.write(bytes);
         
-        return true;
+        return 200;
     }
-    pub fn send_file(&mut self, path:&str) -> bool {
+    pub fn send_file(&mut self, path:&str) -> i32 {
         if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
-            return false;
+            return 500;
         }
         println!("Rendering file at {}", path);
         let read_chunk_size : usize = 1024 * 1024 * 8;
         let Ok(mut file) = File::open(path) else {
-            return false;
+            return 404;
         };
         let ext = path.split(".").last().unwrap();
         self.set_header("content-type", get_mime_type(ext));
@@ -342,7 +346,7 @@ impl Request<'_> {
         let Ok(_) = file.seek(SeekFrom::Start(file_offset.try_into().unwrap())) else { todo!() };
         
         self.set_header("content-length", &content_length.to_string());
-        self.set_status(code, if code == 200 { "OK" } else { "Partial Content" });
+        self.set_status(code);
         while written < content_length {
             if self.connection_closed { break; };
             let chunk_size : usize = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
@@ -354,7 +358,7 @@ impl Request<'_> {
         }
         drop(file);
         self.end();
-        return true;
+        return 200;
     }
 }
 

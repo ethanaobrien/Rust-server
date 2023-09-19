@@ -9,7 +9,7 @@ fn main() {
 
 fn on_request(mut res:Request) {
     //let base_path = "C:/Users/ethan/git/EmulatorJS";
-    let base_path = "C:/Users/ethan/Downloads";
+    let base_path = "C:/Users/ethan";
     res.set_header("Connection", "keep-alive");
     res.set_header("Accept-ranges", "bytes");
     
@@ -21,15 +21,22 @@ fn on_request(mut res:Request) {
     }
     //res.write_string("yes");
     
-    res.set_status(200, "OK");
+    res.set_status(200);
     let success = res.send_file(&(base_path.to_owned() + &url_decode(&res.path.split("?").collect::<Vec<_>>()[0])));
     //println!("{}", success);
-    if !success {
+    if success == 500 {
+        res.set_status(500);
+        res.write_string("Error");
+    }
+    if success == 404 {
         let s2 = res.directory_listing(&(base_path.to_owned() + &url_decode(&res.path.split("?").collect::<Vec<_>>()[0])));
-        if !s2 {
-            //is this 404?
-            res.set_status(500, "Internal Server Error");
+        if s2 == 500 {
+            res.set_status(500);
             res.write_string("Error");
+        }
+        if s2 == 404 {
+            res.set_status(404);
+            res.write_string("Not found");
         }
         //res.end();
     }
