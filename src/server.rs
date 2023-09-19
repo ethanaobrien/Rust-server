@@ -3,7 +3,53 @@ use std::net::TcpListener;
 use std::thread;
 use std::io::{ Read, Write, SeekFrom, Seek };
 use std::fs::File;
+use std::str;
 
+pub fn url_decode(input: &str) -> String {
+    let mut decoded = String::new();
+    let mut bytes = input.bytes();
+    let mut utf8_buffer = Vec::new();
+
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            if let (Some(hex1), Some(hex2)) = (bytes.next(), bytes.next()) {
+                let hex_chars = vec![hex1, hex2];
+                let hex_string: String = hex_chars.iter().map(|&x| x as char).collect();
+                if let Ok(byte) = u8::from_str_radix(&hex_string, 16) {
+                    utf8_buffer.push(byte);
+                } else {
+                    decoded.push('%');
+                    decoded.push(hex1 as char);
+                    decoded.push(hex2 as char);
+                }
+            } else {
+                decoded.push('%');
+            }
+        } else {
+            if !utf8_buffer.is_empty() {
+                if let Ok(utf8_str) = str::from_utf8(&utf8_buffer) {
+                    decoded.push_str(utf8_str);
+                } else {
+                    for b in &utf8_buffer {
+                        decoded.push(*b as char);
+                    }
+                }
+                utf8_buffer.clear();
+            }
+            decoded.push(byte as char);
+        }
+    }
+    if !utf8_buffer.is_empty() {
+        if let Ok(utf8_str) = str::from_utf8(&utf8_buffer) {
+            decoded.push_str(utf8_str);
+        } else {
+            for b in &utf8_buffer {
+                decoded.push(*b as char);
+            }
+        }
+    }
+    return decoded;
+}
 
 #[allow(dead_code)]
 #[allow(unused_assignments)]
