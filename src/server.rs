@@ -1,16 +1,18 @@
 use std::net::TcpStream;
 use std::net::TcpListener;
 use std::thread;
-use std::io::{ Read, Write };
+use std::io::{ Read, Write, SeekFrom, Seek };
 use std::fs::File;
 
 
 #[allow(dead_code)]
+#[allow(unused_assignments)]
 struct Header {
     name: String,
     value: String
 }
 #[allow(dead_code)]
+#[allow(unused_assignments)]
 impl Header {
     pub fn new(header:&str, value:&str) -> Header {
         Header {
@@ -21,6 +23,7 @@ impl Header {
 }
 
 #[allow(dead_code)]
+#[allow(unused_assignments)]
 pub struct Request<'a> {
     pub path: String,
     pub method: String,
@@ -36,6 +39,7 @@ pub struct Request<'a> {
 }
 
 #[allow(dead_code)]
+#[allow(unused_assignments)]
 impl Request<'_> {
     pub fn new(stream:&TcpStream, head:String) -> Request {
         let lines = head.split("\r\n").collect::<Vec<_>>();
@@ -108,18 +112,30 @@ impl Request<'_> {
             header += &("\r\n".to_owned()+key.as_str());
         }
         header += "\r\n\r\n";
-        self.stream.write(header.as_bytes()).unwrap();
+        self.write_to_stream(header.as_bytes());
         self.headers_written = true;
+    }
+    fn write_to_stream(&mut self, data:&[u8]) -> bool {
+        let mut rv = true;
+        match self.stream.write(data) {
+            Ok(_e) => {
+                rv = true;
+            },
+            Err(_e) => {
+                rv = false;
+            },
+        };
+        return rv;
     }
     pub fn write(&mut self, data:&[u8]) {
         if !self.headers_written { self.send_headers(); };
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
         if chunked {
-            self.stream.write((format!("{:x}", data.len())+"\r\n").as_bytes()).unwrap();
+            self.write_to_stream((format!("{:x}", data.len())+"\r\n").as_bytes());
         }
-        self.stream.write(data).unwrap();
+        self.write_to_stream(data);
         if chunked {
-            self.stream.write("\r\n".as_bytes()).unwrap();
+            self.write_to_stream("\r\n".as_bytes());
         }
     }
     fn format_header(&self, header:&str) -> String {
@@ -188,15 +204,13 @@ impl Request<'_> {
         self.finished = true;
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
         if chunked {
-            self.stream.write("0\r\n\r\n".as_bytes()).unwrap();
+            self.write_to_stream("0\r\n\r\n".as_bytes());
         } else {
-            self.stream.write("\r\n\r\n".as_bytes()).unwrap();
+            self.write_to_stream("\r\n\r\n".as_bytes());
         }
     }
     pub fn send_file(&mut self, path:&str) -> bool {
-        if !self.headers_written {
-            self.send_headers();
-        } else {
+        if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
             return false;
         }
@@ -207,9 +221,47 @@ impl Request<'_> {
         };
         let size : usize = file.metadata().unwrap().len().try_into().unwrap();
         let mut written : usize = 0;
-        self.set_header("content-length", &size.to_string());
-        while written < size {
-            let chunk_size : usize = if size-written > read_chunk_size { read_chunk_size } else { size-written };
+        
+        let mut file_offset : usize = 0;
+        let mut file_end_offset : usize = size - 1;
+        let mut content_length : usize = size;
+        let mut code = 200;
+        let range_header = self.get_header("Range");
+        //println!("{}", self.get_header("Range"));
+        if range_header != String::new() {
+            //println!("Range Request");
+            let range = range_header.split("=").collect::<Vec<_>>()[1].trim();
+            let rparts = range.split("-").collect::<Vec<_>>();
+            match rparts[0].parse::<usize>() {
+                Ok(num) => {
+                    file_offset = num;
+                },
+                Err(_e) => {/*nada*/},
+            }
+            //println!("{} {}", range_header, rparts[1].len());
+            if rparts[1].len() == 0 {
+                //file_end_offset = size - 1;
+                content_length = size - file_offset;
+                self.set_header("content-range", &("bytes ".to_owned()+&file_offset.to_string()+"-"+&(size-1).to_string()+"/"+&size.to_string()));
+                code = if file_offset == 0 { 200 } else { 206 };
+            } else {
+                match rparts[1].parse::<usize>() {
+                    Ok(num) => {
+                        file_end_offset = num;
+                    },
+                    Err(_e) => {/*nada*/},
+                }
+                content_length = file_end_offset - file_offset + 1;
+                self.set_header("content-range", &("bytes ".to_owned()+&file_offset.to_string()+"-"+&file_end_offset.to_string()+"/"+&size.to_string()));
+                code = 206;
+            }
+        }
+        let Ok(_) = file.seek(SeekFrom::Start(file_offset.try_into().unwrap())) else { todo!() };
+        
+        self.set_header("content-length", &content_length.to_string());
+        self.set_status(code, if code == 200 { "OK" } else { "Partial Content" });
+        while written < content_length {
+            let chunk_size : usize = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
             let mut buffer = vec![0; chunk_size];
             let Ok(_) = file.read(&mut buffer) else { todo!() };
             self.write(&buffer);
@@ -231,6 +283,9 @@ fn read_header(mut stream:&TcpStream, on_request:fn(res:Request)) -> bool {
         if request.ends_with("\r\n\r\n") {
             break;
         }
+    }
+    if request.len() == 0 {
+        return false;
     }
     (on_request)(Request::new(stream, request));
     return true;

@@ -8,10 +8,17 @@ fn main() {
 
 fn on_request(mut res:Request) {
     //let base_path = "C:/Users/ethan/git/EmulatorJS";
-    let base_path = "C:/Users/ethan/Videos/Captures";
+    let base_path = "C:/Users/ethan/git/t";
     res.set_header("Connection", "keep-alive");
     res.set_header("Accept-ranges", "bytes");
-    res.set_header("Content-Type", "video/mp4");
+    
+    //todo, should be set by backend
+    if res.path.ends_with(".flac") {
+        res.set_header("Content-Type", "audio/flac");
+    } else {
+        res.set_header("Content-Type", "text/html");
+    }
+    
     //let host = res.get_header("Host");
     //res.write_string(("Host: ".to_string() + &host).as_str());
     if res.method == "PUT" {
@@ -20,11 +27,11 @@ fn on_request(mut res:Request) {
     }
     //res.write_string("yes");
     
-    //Dont use when using send_file.
     res.set_status(200, "OK");
-    let success = res.send_file(&(base_path.to_owned() + &res.path));
+    //println!("{}", success);
     if !success {
         res.write_string("Error");
+        res.end();
     }
     //res.end();
     
