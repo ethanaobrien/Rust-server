@@ -1,8 +1,8 @@
-use std::io::Write;
 use std::net::TcpStream;
 use std::net::TcpListener;
 use std::thread;
-use std::io::Read;
+use std::io::{ Read, Write };
+use std::fs::File;
 
 
 #[allow(dead_code)]
@@ -31,7 +31,8 @@ pub struct Request<'a> {
     status_message: String,
     headers_written: bool,
     length: usize,
-    consumed: usize
+    consumed: usize,
+    finished: bool
 }
 
 #[allow(dead_code)]
@@ -65,7 +66,8 @@ impl Request<'_> {
             status_message: String::from("OK"),
             headers_written: false,
             length: length,
-            consumed: 0
+            consumed: 0,
+            finished: false
         }
     }
     pub fn read(&mut self, bytes:usize) -> Vec<u8> {
@@ -180,15 +182,41 @@ impl Request<'_> {
         self.status_code = code;
         self.status_message = msg.to_string();
     }
-    pub fn end(mut self) {
+    pub fn end(&mut self) {
+        if self.finished { return; };
         if !self.headers_written { self.send_headers(); };
+        self.finished = true;
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");
         if chunked {
             self.stream.write("0\r\n\r\n".as_bytes()).unwrap();
         } else {
             self.stream.write("\r\n\r\n".as_bytes()).unwrap();
         }
-        //
+    }
+    pub fn send_file(&mut self, path:&str) -> bool {
+        if !self.headers_written {
+            self.send_headers();
+        } else {
+            println!("Headers must not yet be sent when using send_file");
+            return false;
+        }
+        println!("Rendering file at {}", path);
+        let read_chunk_size : usize = 1024 * 1024 * 8;
+        let Ok(mut file) = File::open(path) else {
+            return false;
+        };
+        let size : usize = file.metadata().unwrap().len().try_into().unwrap();
+        let mut written : usize = 0;
+        self.set_header("content-length", &size.to_string());
+        while written < size {
+            let chunk_size : usize = if size-written > read_chunk_size { read_chunk_size } else { size-written };
+            let mut buffer = vec![0; chunk_size];
+            let Ok(_) = file.read(&mut buffer) else { todo!() };
+            self.write(&buffer);
+            written += chunk_size
+        }
+        self.end();
+        return true;
     }
 }
 
