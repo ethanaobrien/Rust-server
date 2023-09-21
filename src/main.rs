@@ -1,15 +1,50 @@
 mod server;
-use crate::server::create_server;
-use crate::server::Request;
-use crate::server::url_decode;
+mod simple_web_server;
+use std::thread;
+use std::time::Duration;
+use crate::server::Settings;
+use crate::simple_web_server::SimpleWebServer;
+
 
 fn main() {
-    create_server("127.0.0.1", 8888, on_request);
+    let settings = Settings {
+        port: 8888,
+        path: "C:/Users",
+        local_network: false,
+        spa: false,
+        rewrite_to: "",
+        directory_listing: true,
+        exclude_dot_html: false,
+        ipv6: false,
+        hidden_dot_files: false,
+        cors: false,
+        upload: false,
+        replace: false,
+        delete: false,
+        hidden_dot_files_directory_listing: false,
+        custom404: "",
+        custom403: "",
+        custom401: "",
+        http_auth: false,
+        http_auth_username: "admin",
+        http_auth_password: "admin",
+    };
+    let server = SimpleWebServer::new(settings);
+    let mut i = 0;
+    loop {
+        i += 1;
+        if i > 50 {
+            server.terminate();
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
+
+/*
 fn on_request(mut res:Request) {
     //let base_path = "C:/Users/ethan/git/EmulatorJS";
-    let base_path = "C:/Users/ethan";
+    let base_path = "C:";
     res.set_header("Connection", "keep-alive");
     res.set_header("Accept-ranges", "bytes");
     
@@ -43,3 +78,4 @@ fn on_request(mut res:Request) {
     res.end();
     
 }
+*/

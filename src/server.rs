@@ -5,6 +5,34 @@ use std::io::{ Read, Write, SeekFrom, Seek };
 use std::fs;
 use std::fs::File;
 use std::str;
+use std::time::Duration;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
+#[derive(Copy, Clone)]
+pub struct Settings<'a> {
+    pub port: i32,
+    pub path: &'a str,
+    pub local_network: bool,
+    pub spa: bool,
+    pub rewrite_to: &'a str,
+    pub directory_listing: bool,
+    pub exclude_dot_html: bool,
+    pub ipv6: bool,
+    pub hidden_dot_files: bool,
+    pub cors: bool,
+    pub upload: bool,
+    pub replace: bool,
+    pub delete: bool,
+    pub hidden_dot_files_directory_listing: bool,
+    pub custom404: &'a str,
+    pub custom403: &'a str,
+    pub custom401: &'a str,
+    pub http_auth: bool,
+    pub http_auth_username: &'a str,
+    pub http_auth_password: &'a str,
+}
 
 mod mime;
 use crate::server::mime::get_mime_type;
@@ -12,6 +40,7 @@ use crate::server::mime::get_mime_type;
 mod httpcodes;
 use crate::server::httpcodes::get_http_message;
 
+#[allow(dead_code)]
 pub fn url_decode(input: &str) -> String {
     let mut decoded = String::new();
     let mut bytes = input.bytes();
@@ -362,7 +391,7 @@ impl Request<'_> {
     }
 }
 
-fn read_header(mut stream:&TcpStream, on_request:fn(res:Request)) -> bool {
+fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_data: Settings) -> bool {
     let mut buffer = [0; 1];
     let mut request = String::new();
     while let Ok(bytes_read) = stream.read(&mut buffer) {
@@ -377,19 +406,64 @@ fn read_header(mut stream:&TcpStream, on_request:fn(res:Request)) -> bool {
     if request.len() == 0 {
         return false;
     }
-    (on_request)(Request::new(stream, request));
+    (on_request)(Request::new(stream, request), user_data);
     return true;
 }
 
-pub fn create_server(host:&str, port:i32, on_request:fn(res:Request)) {
-    let listener = TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()).unwrap();
-    println!("Server started on http://{}:{}/", host, port);
-    for stream in listener.incoming() {
-        thread::spawn(move || {
-            while read_header(stream.as_ref().unwrap(), on_request) {
-                // keep alive
+pub fn create_server<'a>(host:&'a str, port:i32, on_request:fn(Request, Settings), user_data: Settings<'static>) -> Option<impl FnOnce() + 'a> {
+    match TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()) {
+        Ok(listener) => {
+            let stop = Arc::new(AtomicBool::new(false)); 
+            let stop_me = stop.clone();
+            match listener.set_nonblocking(true) {
+                Ok(_) => {},
+                Err(_) => {return None},
             }
-            drop(stream);
-        });
+            println!("Server started on http://{}:{}/", host, port);
+            thread::spawn(move || {
+                let should_exit = stop_me.load(Ordering::Relaxed);
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(s) => {
+                            match s.set_nonblocking(false) {
+                                Ok(_) => {},
+                                Err(_) => {
+                                    println!("Error: failed to set non blocking on request stream!");
+                                    return;
+                                },
+                            }
+                            thread::spawn(move || {
+                                while read_header(&s, on_request, user_data) {
+                                    // keep alive
+                                }
+                                drop(s);
+                            });
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            
+                            if should_exit {
+                                //println!("{}", should_exit);
+                                drop(listener);
+                                break;
+                            };
+                            thread::sleep(Duration::from_millis(10));
+                            continue;
+                        }
+                        Err(e) => panic!("encountered IO error: {}", e),
+                    }
+                    if should_exit {
+                        break;
+                    }
+                }
+            });
+            return Some(move || {
+                stop.store(true, Ordering::Relaxed);
+                println!("Killing server on http://{}:{}/", host, port);
+            });
+        },
+        Err(_) => {
+            println!("Failed to listen on http://{}:{}/", host, port);
+            None
+        },
     }
 }
