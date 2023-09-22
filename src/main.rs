@@ -1,10 +1,8 @@
 mod server;
-mod simple_web_server;
 use std::thread;
 use std::time::Duration;
 use crate::server::Settings;
-use crate::simple_web_server::simple_web_server;
-
+use crate::server::Server;
 
 fn main() {
     let settings = Settings {
@@ -29,19 +27,15 @@ fn main() {
         http_auth_username: "admin",
         http_auth_password: "admin",
     };
-    let result = simple_web_server(settings);
-    if let Some(_kill) = result {
-        //let mut i = 0;
-        loop {
-            //i += 1;
-            //if i > 50 {
-            //    _kill();
-            //    return;
-            //}
-            thread::sleep(Duration::from_millis(100));
-        }
-    } else {
-        println!("error starting server");
+    let mut server = Server::new(settings);
+    println!("Server started: {}", server.start());
+    //let mut i = 0;
+    loop {
+        //i += 1;
+        //if i > 20 {
+        //    server.terminate();
+        //}
+        thread::sleep(Duration::from_millis(100));
     }
 }
 

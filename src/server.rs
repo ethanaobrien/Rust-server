@@ -6,9 +6,9 @@ use std::fs;
 use std::fs::File;
 use std::str;
 use std::time::Duration;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::mpsc;
+use std::sync::Mutex;
 
 #[derive(Copy, Clone)]
 pub struct Settings<'a> {
@@ -410,60 +410,97 @@ fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_dat
     return true;
 }
 
-pub fn create_server<'a>(host:&'a str, port:i32, on_request:fn(Request, Settings), user_data: Settings<'static>) -> Option<impl FnOnce() + 'a> {
-    match TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()) {
-        Ok(listener) => {
-            let stop = Arc::new(AtomicBool::new(false)); 
-            let stop_me = stop.clone();
-            match listener.set_nonblocking(true) {
-                Ok(_) => {},
-                Err(_) => {return None},
-            }
-            println!("Server started on http://{}:{}/", host, port);
-            thread::spawn(move || {
-                let should_exit = stop_me.load(Ordering::Relaxed);
-                for stream in listener.incoming() {
-                    match stream {
-                        Ok(s) => {
-                            match s.set_nonblocking(false) {
-                                Ok(_) => {},
-                                Err(_) => {
-                                    println!("Error: failed to set non blocking on request stream!");
-                                    return;
-                                },
-                            }
-                            thread::spawn(move || {
-                                while read_header(&s, on_request, user_data) {
-                                    // keep alive
-                                }
-                                drop(s);
-                            });
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            
-                            if should_exit {
-                                //println!("{}", should_exit);
-                                drop(listener);
-                                break;
-                            };
-                            thread::sleep(Duration::from_millis(10));
-                            continue;
-                        }
-                        Err(e) => panic!("encountered IO error: {}", e),
-                    }
-                    if should_exit {
-                        break;
-                    }
-                }
-            });
-            return Some(move || {
-                stop.store(true, Ordering::Relaxed);
-                println!("Killing server on http://{}:{}/", host, port);
-            });
-        },
-        Err(_) => {
-            println!("Failed to listen on http://{}:{}/", host, port);
-            None
-        },
+#[allow(dead_code)]
+pub struct Server {
+    opts: Settings<'static>,
+    sender: Option<mpsc::Sender<String>>,
+    receiver: Arc<Mutex<mpsc::Receiver<String>>>,
+    running: bool
+}
+
+#[allow(dead_code)]
+impl Server {
+    pub fn new(opts: Settings<'static>) -> Server {
+        let (sender, receiver) = mpsc::channel();
+        let receiver = Arc::new(Mutex::new(receiver));
+        Server {
+            opts,
+            receiver,
+            sender: Some(sender),
+            running: false
+        }
     }
+    pub fn start(&mut self) -> bool {
+        let receiver = self.receiver.clone();
+        let opts = self.opts;
+        let host = if opts.local_network {
+            if opts.ipv6 { "::" } else { "0.0.0.0" }
+        } else {
+            if opts.ipv6 { "::1" } else { "127.0.0.1" }
+        };
+        let port = opts.port;
+        match TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()) {
+            Ok(listener) => {
+                match listener.set_nonblocking(true) {
+                    Ok(_) => {},
+                    Err(_) => { return false; },
+                }
+                thread::spawn(move || {
+                    println!("Server started on http://{}:{}/", host, port);
+                    for stream in listener.incoming() {
+                        match stream {
+                            Ok(s) => {
+                                match s.set_nonblocking(false) {
+                                    Ok(_) => {},
+                                    Err(_) => {
+                                        println!("Error: failed to set non blocking on request stream!");
+                                        continue;
+                                    },
+                                }
+                                thread::spawn(move || {
+                                    while read_header(&s, on_request, opts) {
+                                        // TODO - kill open sockets
+                                        
+                                        // keep alive
+                                    }
+                                    drop(s);
+                                });
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                let message = receiver.lock().unwrap().try_recv();
+                                match message {
+                                    Ok(job) => {
+                                        if job == String::from("kill") {
+                                            break;
+                                        }
+                                    }
+                                    Err(_) => {}
+                                }
+                                thread::sleep(Duration::from_millis(10));
+                            }
+                            Err(e) => panic!("encountered IO error: {}", e),
+                        }
+                    }
+                    drop(listener);
+                });
+            },
+            Err(_) => {
+                println!("Failed to listen on http://{}:{}/", host, port);
+                return false;
+            },
+        }
+        self.running = true;
+        return true;
+    }
+    pub fn terminate(&mut self) {
+        if !self.running { return; };
+        println!("Killing server");
+        self.running = false;
+        self.sender.as_ref().unwrap().send(String::from("kill")).unwrap();
+    }
+}
+
+fn on_request(mut res:Request, opts:Settings) {
+    res.write_string(opts.path);
+    res.end();
 }
