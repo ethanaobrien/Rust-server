@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Copy, Clone)]
 pub struct Settings<'a> {
@@ -447,6 +448,7 @@ impl Server {
                 }
                 thread::spawn(move || {
                     println!("Server started on http://{}:{}/", host, port);
+                    let stopped: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
                     for stream in listener.incoming() {
                         match stream {
                             Ok(s) => {
@@ -457,9 +459,12 @@ impl Server {
                                         continue;
                                     },
                                 }
+                                let stopped_clone = Arc::clone(&stopped);
                                 thread::spawn(move || {
                                     while read_header(&s, on_request, opts) {
-                                        // TODO - kill open sockets
+                                        let value = stopped_clone.load(Ordering::Relaxed);
+                                        if value == true { break; }
+                                        // TODO - kill open sockets immediately?
                                         
                                         // keep alive
                                     }
@@ -471,6 +476,7 @@ impl Server {
                                 match message {
                                     Ok(job) => {
                                         if job == String::from("kill") {
+                                            stopped.store(true, Ordering::Relaxed);
                                             break;
                                         }
                                     }

@@ -29,12 +29,12 @@ fn main() {
     };
     let mut server = Server::new(settings);
     println!("Server started: {}", server.start());
-    //let mut i = 0;
+    let mut i = 0;
     loop {
-        //i += 1;
-        //if i > 20 {
-        //    server.terminate();
-        //}
+        i += 1;
+        if i > 20 {
+            server.terminate();
+       }
         thread::sleep(Duration::from_millis(100));
     }
 }
