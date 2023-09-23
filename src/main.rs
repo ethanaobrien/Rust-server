@@ -1,8 +1,9 @@
 mod server;
+mod simple_web_server;
+use crate::simple_web_server::SimpleWebServer;
 use std::thread;
 use std::time::Duration;
 use crate::server::Settings;
-use crate::server::Server;
 
 fn main() {
     let settings = Settings {
@@ -27,7 +28,7 @@ fn main() {
         http_auth_username: "admin",
         http_auth_password: "admin",
     };
-    let mut server = Server::new(settings);
+    let mut server = SimpleWebServer::new(settings);
     println!("Server started: {}", server.start());
     //let mut i = 0;
     loop {

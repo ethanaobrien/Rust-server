@@ -144,9 +144,10 @@ impl Request<'_> {
                 }
             }
         }
+        let path = url_decode(parts[1].splitn(2, '?').collect::<Vec<_>>()[0]);
         Request {
             method: parts[0].to_string(),
-            path: parts[1].to_string(),
+            path: path,
             stream: stream,
             headers: headers,
             out_headers: Vec::new(),
@@ -429,19 +430,21 @@ pub struct Server {
     opts: Settings<'static>,
     sender: Option<mpsc::Sender<String>>,
     receiver: Arc<Mutex<mpsc::Receiver<String>>>,
-    running: bool
+    running: bool,
+    on_request: fn(Request, Settings)
 }
 
 #[allow(dead_code)]
 impl Server {
-    pub fn new(opts: Settings<'static>) -> Server {
+    pub fn new(opts: Settings<'static>, on_request: fn(Request, Settings)) -> Server {
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         Server {
             opts,
             receiver,
             sender: Some(sender),
-            running: false
+            running: false,
+            on_request
         }
     }
     pub fn start(&mut self) -> bool {
@@ -453,6 +456,7 @@ impl Server {
             if opts.ipv6 { "::1" } else { "127.0.0.1" }
         };
         let port = opts.port;
+        let on_request = self.on_request;
         match TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()) {
             Ok(listener) => {
                 match listener.set_nonblocking(true) {
@@ -506,9 +510,4 @@ impl Server {
         self.running = false;
         self.sender.as_ref().unwrap().send(String::from("kill")).unwrap();
     }
-}
-
-fn on_request(mut res:Request, opts:Settings) {
-    res.write_string(opts.path);
-    res.end();
 }
