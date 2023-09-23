@@ -392,16 +392,29 @@ impl Request<'_> {
     }
 }
 
-fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_data: Settings) -> bool {
+fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_data: Settings, stopped_clone: &Arc<AtomicBool>) -> bool {
     let mut buffer = [0; 1];
     let mut request = String::new();
-    while let Ok(bytes_read) = stream.read(&mut buffer) {
-        if bytes_read == 0 {
-            return false;
-        }
-        request += &String::from_utf8_lossy(&buffer[..bytes_read]);
-        if request.ends_with("\r\n\r\n") {
-            break;
+    
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(bytes_read) => {
+                if bytes_read == 0 {
+                    return false;
+                }
+                request += &String::from_utf8_lossy(&buffer[..bytes_read]);
+                if request.ends_with("\r\n\r\n") {
+                    break;
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                let value = stopped_clone.load(Ordering::Relaxed);
+                if value == true { break; }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => {
+                break;
+            },
         }
     }
     if request.len() == 0 {
@@ -452,20 +465,9 @@ impl Server {
                     for stream in listener.incoming() {
                         match stream {
                             Ok(s) => {
-                                match s.set_nonblocking(false) {
-                                    Ok(_) => {},
-                                    Err(_) => {
-                                        println!("Error: failed to set non blocking on request stream!");
-                                        continue;
-                                    },
-                                }
                                 let stopped_clone = Arc::clone(&stopped);
                                 thread::spawn(move || {
-                                    while read_header(&s, on_request, opts) {
-                                        let value = stopped_clone.load(Ordering::Relaxed);
-                                        if value == true { break; }
-                                        // TODO - kill open sockets immediately?
-                                        
+                                    while read_header(&s, on_request, opts, &stopped_clone) {
                                         // keep alive
                                     }
                                     drop(s);
