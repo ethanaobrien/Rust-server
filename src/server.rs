@@ -41,6 +41,7 @@ pub struct Settings<'a> {
     pub http_auth: bool,
     pub http_auth_username: &'a str,
     pub http_auth_password: &'a str,
+    pub index: bool
 }
 
 #[allow(dead_code)]

@@ -12,6 +12,7 @@ fn main() {
         local_network: false,
         spa: false,
         rewrite_to: "",
+        index: true,
         directory_listing: true,
         exclude_dot_html: false,
         ipv6: false,
