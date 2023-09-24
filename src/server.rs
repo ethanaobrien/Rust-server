@@ -11,6 +11,14 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub mod file_system;
+
+mod mime;
+use crate::server::mime::get_mime_type;
+
+mod httpcodes;
+use crate::server::httpcodes::get_http_message;
+
 #[derive(Copy, Clone)]
 pub struct Settings<'a> {
     pub port: i32,
@@ -34,12 +42,6 @@ pub struct Settings<'a> {
     pub http_auth_username: &'a str,
     pub http_auth_password: &'a str,
 }
-
-mod mime;
-use crate::server::mime::get_mime_type;
-
-mod httpcodes;
-use crate::server::httpcodes::get_http_message;
 
 #[allow(dead_code)]
 pub fn url_decode(input: &str) -> String {
@@ -89,6 +91,54 @@ pub fn url_decode(input: &str) -> String {
 }
 
 #[allow(dead_code)]
+fn relative_path(cur_path: &str, req_path: &str) -> String {
+    let mut end_with_slash = false;
+    if req_path.ends_with('/') {
+        end_with_slash = true;
+    }
+    
+    let mut split1: Vec<&str> = cur_path.split('/').collect();
+    let split2: Vec<&str> = req_path.split('/').collect();
+    
+    for w in split2.iter() {
+        match *w {
+            "" | "." => { /* . means current directory. Leave this here for spacing */ }
+            ".." => {
+                if split1.len() > 0 {
+                    split1.pop();
+                }
+            }
+            _ => {
+                split1.push(w);
+            }
+        }
+    }
+    
+    let mut new_path = split1.join("/");
+    new_path = new_path.replace("//", "/");
+    
+    if !new_path.starts_with('/') {
+        new_path = format!("/{}", new_path);
+    }
+    
+    if end_with_slash && !new_path.ends_with('/') {
+        new_path.push('/');
+    }
+    
+    new_path
+}
+
+#[allow(dead_code)]
+fn strip_off_file(orig_path: &str) -> String {
+    if orig_path == "/" {
+        return "/".to_string();
+    }
+    
+    let last_slash_idx = orig_path.rfind('/').unwrap_or(0);
+    orig_path[0..last_slash_idx].to_string()
+}
+
+#[allow(dead_code)]
 #[allow(unused_assignments)]
 struct Header {
     name: String,
@@ -109,6 +159,7 @@ impl Header {
 #[allow(unused_assignments)]
 pub struct Request<'a> {
     pub path: String,
+    pub origpath: String,
     pub method: String,
     stream: &'a TcpStream,
     headers: Vec<Header>,
@@ -144,10 +195,13 @@ impl Request<'_> {
                 }
             }
         }
-        let path = url_decode(parts[1].splitn(2, '?').collect::<Vec<_>>()[0]);
+        let path = relative_path("", &url_decode(parts[1].splitn(2, '?').collect::<Vec<_>>()[0]));
+        let origpath = relative_path("", &parts[1].splitn(2, '?').collect::<Vec<_>>()[0]);
+        //todo, parse url arguments
         Request {
             method: parts[0].to_string(),
             path: path,
+            origpath: origpath,
             stream: stream,
             headers: headers,
             out_headers: Vec::new(),
@@ -330,7 +384,7 @@ impl Request<'_> {
             println!("Headers must not yet be sent when using send_file");
             return 500;
         }
-        println!("Rendering file at {}", path);
+        //println!("Rendering file at {}", path);
         let read_chunk_size : usize = 1024 * 1024 * 8;
         let Ok(mut file) = File::open(path) else {
             return 404;
