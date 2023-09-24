@@ -44,9 +44,9 @@ impl SimpleWebServer {
         let mut rendered = false;
         let entry = GetByPath::new(&file_path);
         if entry.is_file {
-            rendered = res.send_file(&entry.path) == 200;
+            rendered = res.send_file(&entry.path, res.method == "HEAD") == 200;
         } else if entry.is_directory {
-            rendered = res.directory_listing(&entry.path) == 200;
+            rendered = res.directory_listing(&entry.path, res.method == "HEAD") == 200;
         }
         if !rendered {
             let msg = "404 - file not found";

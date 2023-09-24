@@ -352,7 +352,7 @@ impl Request<'_> {
         }
     }
     //The directory_listing and send_file functions will return either 404, 500, or 200
-    pub fn directory_listing(&mut self, path:&str) -> i32 {
+    pub fn directory_listing(&mut self, path:&str, no_body:bool) -> i32 {
         if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
             return 500;
@@ -375,11 +375,14 @@ impl Request<'_> {
         to_send += "</ul></body></html>";
         let bytes = to_send.as_bytes();
         self.set_header("content-length", &bytes.len().to_string());
-        self.write(bytes);
+        if !no_body {
+            self.write(bytes);
+        }
+        self.end();
         
         return 200;
     }
-    pub fn send_file(&mut self, path:&str) -> i32 {
+    pub fn send_file(&mut self, path:&str, no_body:bool) -> i32 {
         if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
             return 500;
@@ -428,10 +431,15 @@ impl Request<'_> {
                 code = 206;
             }
         }
-        let Ok(_) = file.seek(SeekFrom::Start(file_offset.try_into().unwrap())) else { todo!() };
         
         self.set_header("content-length", &content_length.to_string());
         self.set_status(code);
+        if no_body {
+            drop(file);
+            self.end();
+            return 200;
+        }
+        let Ok(_) = file.seek(SeekFrom::Start(file_offset.try_into().unwrap())) else { return 500; };
         while written < content_length {
             if self.connection_closed { break; };
             let chunk_size : usize = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
