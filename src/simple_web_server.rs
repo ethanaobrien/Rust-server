@@ -25,6 +25,12 @@ impl SimpleWebServer {
         res.set_header("Connection", "keep-alive");
         res.set_header("Accept-ranges", "bytes");
         
+        if opts.cors {
+            res.set_header("access-control-allow-origin", "*");
+            res.set_header("access-control-allow-methods", "GET, POST, PUT, DELETE");
+            res.set_header("access-control-max-age", "120");
+        }
+        
         if res.method == "GET" || res.method == "HEAD" {
             SimpleWebServer::get(res, opts);
         } else {
