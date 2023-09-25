@@ -95,6 +95,26 @@ impl SimpleWebServer {
             res.end();
             return;
         }
+        if opts.index && entry.is_directory {
+            if let Ok(paths) = std::fs::read_dir(file_path.clone()) {
+                for path in paths {
+                    let file = path.unwrap().path().display().to_string();
+                    let name = file.split("/").last().unwrap_or("");
+                    if name == "index.html" || name == "index.htm" {
+                        res.set_header("content-type", "text/html; charset=utf-8");
+                        if res.send_file(&(file_path.clone()+name), is_head) == 200 {
+                            return;
+                        }
+                    } else if name == "index.xhtml" || name == "index.xhtm" {
+                        res.set_header("content-type", "application/xhtml+xml; charset=utf-8");
+                        if res.send_file(&(file_path.clone()+name), is_head) == 200 {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        
         if entry.is_file {
             rendered = res.send_file(&entry.path, is_head) == 200;
         } else if opts.directory_listing && entry.is_directory {
