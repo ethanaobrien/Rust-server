@@ -46,13 +46,15 @@ impl SimpleWebServer {
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
         }
+        let is_head = res.method == "HEAD";
+        
         
         let mut rendered = false;
         let entry = GetByPath::new(&file_path);
         if entry.is_file {
-            rendered = res.send_file(&entry.path, res.method == "HEAD") == 200;
-        } else if entry.is_directory {
-            rendered = res.directory_listing(&entry.path, res.method == "HEAD") == 200;
+            rendered = res.send_file(&entry.path, is_head) == 200;
+        } else if opts.directory_listing && entry.is_directory {
+            rendered = res.directory_listing(&entry.path, is_head) == 200;
         }
         if !rendered {
             let msg = "404 - file not found";
@@ -61,6 +63,5 @@ impl SimpleWebServer {
             res.write_string(msg);
             res.end();
         }
-        
     }
 }
