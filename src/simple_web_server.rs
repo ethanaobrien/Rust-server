@@ -78,6 +78,23 @@ impl SimpleWebServer {
         
         let mut rendered = false;
         let entry = GetByPath::new(&file_path);
+        if entry.is_file && res.origpath != "/" && res.origpath.ends_with("/") {
+            res.set_header("Content-length", "0");
+            let mut path = res.origpath.clone();
+            path.pop();
+            res.set_header("location", &path);
+            res.set_status(301);
+            res.end();
+            return;
+        }
+        if entry.is_directory && !res.origpath.ends_with("/") {
+            res.set_header("Content-length", "0");
+            let path = res.origpath.clone();
+            res.set_header("location", &(path+"/"));
+            res.set_status(301);
+            res.end();
+            return;
+        }
         if entry.is_file {
             rendered = res.send_file(&entry.path, is_head) == 200;
         } else if opts.directory_listing && entry.is_directory {
