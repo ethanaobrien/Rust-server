@@ -48,6 +48,33 @@ impl SimpleWebServer {
         }
         let is_head = res.method == "HEAD";
         
+        if opts.exclude_dot_html && res.origpath.ends_with(".html") || res.origpath.ends_with(".htm") {
+            let mut new_path = res.origpath.clone();
+            let new_length = new_path.len() - if res.origpath.ends_with(".html") { 5 } else { 4 };
+            new_path.truncate(new_length);
+            res.set_header("location", &new_path);
+            res.set_status(307);
+            res.end();
+            return;
+        }
+        
+        if opts.exclude_dot_html && res.origpath != "/" && !res.origpath.ends_with("/") {
+            let entry = GetByPath::new(&(file_path.clone()+".html"));
+            if !entry.error && entry.is_file {
+                res.set_header("content-type", "text/html; charset=utf-8");
+                if res.send_file(&entry.path, is_head) == 200 {
+                    return;
+                }
+            }
+            let entry2 = GetByPath::new(&(file_path.clone()+".htm"));
+            if !entry2.error && entry2.is_file {
+                res.set_header("content-type", "text/html; charset=utf-8");
+                if res.send_file(&entry2.path, is_head) == 200 {
+                    return;
+                }
+            }
+        }
+        
         
         let mut rendered = false;
         let entry = GetByPath::new(&file_path);
