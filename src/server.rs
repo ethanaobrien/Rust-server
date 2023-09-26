@@ -215,26 +215,74 @@ impl Request<'_> {
             connection_closed: false
         }
     }
-    pub fn read(&mut self, bytes:usize) -> Vec<u8> {
+    pub fn read(&mut self, bytes:usize) -> Result<Vec<u8>, bool> {
         let mut bytes = bytes;
         if self.consumed + bytes > self.length || bytes == 0 {
             //Consume the whole/rest of the body
             bytes = self.length - self.consumed;
         }
         if bytes <= 0 {
-            return b"".to_vec();
+            return Ok(b"".to_vec());
         }
         let mut buffer = vec![0; bytes];
-        let Ok(bytes_read) = self.stream.read(&mut buffer) else {
-            println!("Read error");
-            return b"".to_vec();
+        match self.stream.read(&mut buffer) {
+            Ok(bytes_read) => {
+                if buffer.len() > bytes_read {
+                    buffer.truncate(bytes_read);
+                }
+                //println!("{} bytes read", bytes_read);
+                self.consumed += bytes_read;
+                return Ok(buffer);
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(10));
+                return Err(false);
+            }
+            Err(_) => {
+                println!("read error");
+                return Err(true);
+            }
+        }
+    }
+    //Will truncate the file
+    pub fn write_to_file(&mut self, path: &str) -> bool {
+        let read_chunk_size = 1024 * 1024 * 4;
+        let Ok(mut file) = File::create(path) else {
+            return false;
         };
-        //println!("{} bytes read", bytes_read);
-        self.consumed += bytes_read;
-        return buffer;
+        let mut done = false;
+        while !done {
+            match self.read(read_chunk_size) {
+                Ok(read) => {
+                    done = read == b"";
+                    match file.write(&read) {
+                        Ok(_) => {},
+                        Err(_e) => {
+                            //uhh. what do we do here...
+                            return false;
+                        }
+                    }
+                }
+                Err(fatal) => {
+                    if fatal { return false; };
+                }
+            }
+        }
+        return true;
+    }
+    fn consume_body(&mut self) {
+        let read_chunk_size = 1024 * 1024 * 4;
+        while self.consumed != self.length {
+            match self.read(read_chunk_size) {
+                Ok(_) => {},
+                Err(fatal) => {
+                    if fatal { return; };
+                }
+            }
+        }
     }
     pub fn read_string(&mut self, bytes:usize) -> String {
-        let read = self.read(bytes);
+        let read = self.read(bytes).unwrap_or("".into());
         let msg = &String::from_utf8_lossy(&read[..read.len()]);
         return msg.to_string();
     }
@@ -343,6 +391,7 @@ impl Request<'_> {
     }
     pub fn end(&mut self) {
         if self.finished { return; };
+        self.consume_body();
         if !self.headers_written { self.send_headers(); };
         self.finished = true;
         let chunked = self.header_value_equals("Transfer-Encoding", "Chunked");

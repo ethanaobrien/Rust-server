@@ -18,8 +18,8 @@ fn main() {
         ipv6: false,
         hidden_dot_files: false,//todo
         cors: false,
-        upload: false,//todo
-        replace: false,//todo
+        upload: false,
+        replace: false,
         delete: false,//todo
         hidden_dot_files_directory_listing: false,//todo
         custom404: "",//todo

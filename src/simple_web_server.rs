@@ -33,12 +33,53 @@ impl SimpleWebServer {
         
         if res.method == "GET" || res.method == "HEAD" {
             SimpleWebServer::get(res, opts);
+        } else if res.method == "PUT" {
+            SimpleWebServer::put(res, opts);
         } else {
             res.set_header("Content-length", "0");
             res.set_status(501);
             res.end();
         }
-        
+    }
+    fn put(mut res:Request, opts: Settings) {
+        if !opts.upload {
+            res.set_header("Content-length", "0");
+            res.set_status(400);
+            res.end();
+            return;
+        }
+        let path = res.origpath.clone();
+        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
+        while file_path.contains("//") {
+            file_path = file_path.replace("//", "/");
+        }
+        let entry = GetByPath::new(&file_path);
+        if (!entry.error && !opts.replace) || entry.is_directory {
+            //file exists
+            res.set_header("Content-length", "0");
+            res.set_status(400);
+            res.end();
+            return;
+        } else if !entry.error {
+            match std::fs::remove_file(&file_path) {
+                Ok(_) => {},
+                Err(_) => {
+                    res.set_header("Content-length", "0");
+                    res.set_status(500);
+                    res.end();
+                    return;
+                }
+            }
+        }
+        if !res.write_to_file(&file_path) {
+            res.set_header("Content-length", "0");
+            res.set_status(500);
+            res.end();
+            return;
+        }
+        res.set_header("Content-length", "0");
+        res.set_status(201);
+        res.end();
     }
     fn get(mut res:Request, opts: Settings) {
         let path = res.origpath.clone();
