@@ -228,6 +228,7 @@ impl Request<'_> {
         match self.stream.read(&mut buffer) {
             Ok(bytes_read) => {
                 if buffer.len() > bytes_read {
+                    //todo: exposed functions should be exact
                     buffer.truncate(bytes_read);
                 }
                 //println!("{} bytes read", bytes_read);
