@@ -20,7 +20,7 @@ fn main() {
         cors: false,
         upload: false,
         replace: false,
-        delete: false,//todo
+        delete: false,
         hidden_dot_files_directory_listing: false,//todo
         custom404: "",//todo
         custom403: "",//todo

@@ -35,10 +35,44 @@ impl SimpleWebServer {
             SimpleWebServer::get(res, opts);
         } else if res.method == "PUT" {
             SimpleWebServer::put(res, opts);
+        } else if res.method == "DELETE" {
+            SimpleWebServer::delete(res, opts);
         } else {
             res.set_header("Content-length", "0");
             res.set_status(501);
             res.end();
+        }
+    }
+    fn delete(mut res:Request, opts: Settings) {
+        if !opts.delete {
+            res.set_header("Content-length", "0");
+            res.set_status(400);
+            res.end();
+            return;
+        }
+        let path = res.origpath.clone();
+        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
+        while file_path.contains("//") {
+            file_path = file_path.replace("//", "/");
+        }
+        let entry = GetByPath::new(&file_path);
+        if entry.error || entry.is_directory {
+            res.set_header("Content-length", "0");
+            res.set_status(404);
+            res.end();
+            return;
+        }
+        match std::fs::remove_file(&file_path) {
+            Ok(_) => {
+                res.set_header("Content-length", "0");
+                res.set_status(200);
+                res.end();
+            }
+            Err(_) => {
+                res.set_header("Content-length", "0");
+                res.set_status(500);
+                res.end();
+            }
         }
     }
     fn put(mut res:Request, opts: Settings) {
