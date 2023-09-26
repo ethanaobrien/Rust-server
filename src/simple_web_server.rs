@@ -22,6 +22,7 @@ impl SimpleWebServer {
     }
     fn on_request(mut res:Request, opts: Settings) {
         //todo, this thing
+        println!("Request: {} {}", res.method, res.path);
         res.set_header("Connection", "keep-alive");
         res.set_header("Accept-ranges", "bytes");
         
@@ -50,7 +51,7 @@ impl SimpleWebServer {
             res.end();
             return;
         }
-        let path = res.origpath.clone();
+        let path = res.path.clone();
         let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
@@ -82,7 +83,7 @@ impl SimpleWebServer {
             res.end();
             return;
         }
-        let path = res.origpath.clone();
+        let path = res.path.clone();
         let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
@@ -116,7 +117,7 @@ impl SimpleWebServer {
         res.end();
     }
     fn get(mut res:Request, opts: Settings) {
-        let path = res.origpath.clone();
+        let path = res.path.clone();
         let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
