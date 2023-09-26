@@ -11,6 +11,8 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+static DIRECTORY_LISTING: &'static str = include_str!("directory-listing-template.html");
+
 pub mod file_system;
 
 mod mime;
@@ -412,7 +414,8 @@ impl Request<'_> {
         let Ok(paths) = fs::read_dir(path) else {
             return 404;
         };
-        let mut to_send = String::from("<html><head><style>li.directory {background:#aab}</style></head><body><a href=\"../\">parent</a><ul>");
+        let mut to_send = String::from("<!DOCTYPE html>\n<html dir=\"ltr\" lang=\"en\n<head><meta charset=\"utf-8\"><meta name=\"google\" value=\"notranslate\"><title id=\"title\"></title>\n</head>\n<body><div id=\"staticListing\"><style>li.directory {background:#aab}</style><a href=\"../\">parent</a><ul>");
+        let mut js_listing = String::new();
         for path in paths {
             let file = path.unwrap();
             let name = file.path().display().to_string();
@@ -422,8 +425,26 @@ impl Request<'_> {
             } else {
                 to_send += &("<li><a href=\"".to_owned() + file_name + "\">" + file_name + "</a></li>");
             }
+            
+            let rawname = name.split("/").last().unwrap_or("").replace("\"", "\\\"");
+            let is_dir = if file.path().is_dir() { "true" } else { "false" };
+            let modified = 0;
+            let modifiedstr = "";
+            let filesize = 0;
+            let filesizestr = "";
+            js_listing += &("<script>addRow(\"".to_owned()+&rawname+"\", \""+&rawname+"\", "+&is_dir+", \""+&filesize.to_string()+"\", \""+&filesizestr+"\", \""+&modified.to_string()+"\", \""+&modifiedstr+"\");</script>");
         }
-        to_send += "</ul></body></html>";
+        to_send += &("</ul></div><div style=\"display: none;\" id=\"niceListing\">\n".to_owned()+&DIRECTORY_LISTING.to_owned());
+        
+        if self.origpath != "/" {
+            to_send += "<script>onHasParentDirectory();</script>";
+        }
+        to_send += &("<script>start(\"".to_owned()+&self.path.replace("\"", "\\\"")+"\")</script>");
+        
+        to_send += &js_listing;
+        
+        to_send += "</div></body></html>";
+        
         let bytes = to_send.as_bytes();
         self.set_header("content-length", &bytes.len().to_string());
         if !no_body {
