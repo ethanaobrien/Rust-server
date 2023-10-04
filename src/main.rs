@@ -26,9 +26,9 @@ fn main() {
         custom404: "",
         custom403: "",
         custom401: "",
-        http_auth: false,//todo
-        http_auth_username: "admin",//todo
-        http_auth_password: "admin",//todo
+        http_auth: false,
+        http_auth_username: "く",
+        http_auth_password: "password",
     };
     let mut server = SimpleWebServer::new(settings);
     println!("Server started: {}", server.start());

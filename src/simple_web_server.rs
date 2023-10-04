@@ -8,6 +8,37 @@ pub struct SimpleWebServer {
     server: Server
 }
 
+const BASE_CHARS: [u8; 64] = [
+    b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P',
+    b'Q', b'R', b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
+    b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v',
+    b'w', b'x', b'y', b'z', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'+', b'/',
+];
+
+pub fn decode_base64(input: &[u8]) -> String {
+	let mut output: Vec<u8> = Vec::new();
+	for chunk in input.chunks(4) {
+
+    	let a = decode_char(chunk[0]);
+    	let b = decode_char(chunk[1]);
+    	let c = decode_char(chunk[2]);
+    	let d = decode_char(chunk[3]);
+
+    	let dec1 = ((a << 2) | (b & 0x30) >> 4) as u8;
+    	let dec2 = (((b & 0x0F) << 4) | (c & 0x3C) >> 2) as u8;
+    	let dec3 = (((c & 0x03) << 6) | (d)) as u8;
+
+    	output.push(dec1);
+    	output.push(dec2);
+    	output.push(dec3);
+	}
+
+	String::from_utf8(output).unwrap_or(String::new()).replace("\0", "")
+}
+fn decode_char(input: u8) -> u8 {
+	BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
+}
+
 #[allow(dead_code)]
 impl SimpleWebServer {
     fn log(msg: String) {
@@ -24,6 +55,20 @@ impl SimpleWebServer {
     pub fn terminate(&mut self) {
         return self.server.terminate();
     }
+    fn validate_auth(auth: String, username: &str, password: &str) -> bool {
+        if auth == "" { return false; };
+        if !auth.to_lowercase().starts_with("basic ") { return false; };
+        let base64_data = &auth[6..];
+        let decoded_str = decode_base64(base64_data.as_bytes());
+        if decoded_str == "" || decoded_str == ":" { return false; };
+        if let Some(index) = decoded_str.find(':') {
+            let auth_username = &decoded_str[0..index];
+            let auth_password = &decoded_str[index + 1..];
+            
+            return auth_username == username && auth_password == password;
+        }
+        return false;
+    }
     fn on_request(mut res:Request, opts: Settings) {
         //todo, this thing
         println!("Request: {} {}", res.method, res.path);
@@ -34,6 +79,13 @@ impl SimpleWebServer {
             res.set_header("access-control-allow-origin", "*");
             res.set_header("access-control-allow-methods", "GET, POST, PUT, DELETE");
             res.set_header("access-control-max-age", "120");
+        }
+        
+        if opts.http_auth {
+            if !Self::validate_auth(res.get_header("authorization"), opts.http_auth_username, opts.http_auth_password) {
+                Self::error(res, opts, "", 401);
+                return;
+            }
         }
         
         if res.method == "GET" || res.method == "HEAD" {
