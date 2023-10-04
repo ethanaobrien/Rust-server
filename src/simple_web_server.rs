@@ -234,7 +234,7 @@ impl SimpleWebServer {
         } else if entry.is_file {
             rendered = res.send_file(&entry.path, is_head) == 200;
         } else if opts.directory_listing && entry.is_directory {
-            rendered = res.directory_listing(&entry.path, is_head) == 200;
+            rendered = res.directory_listing(&entry.path, is_head, opts.hidden_dot_files_directory_listing) == 200;
         }
         if !rendered {
             Self::error(res, opts, "", 404);

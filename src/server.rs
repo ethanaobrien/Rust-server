@@ -94,6 +94,16 @@ pub fn url_decode(input: &str) -> String {
     return decoded;
 }
 
+fn is_hidden(path: String) -> bool {
+    let components: Vec<&str> = path.split('/').collect();
+    for component in components.iter() {
+        if component.starts_with('.') && component != &"." && component != &".." {
+            return true;
+        }
+    }
+    return false;
+}
+
 #[allow(dead_code)]
 fn relative_path(cur_path: &str, req_path: &str) -> String {
     let mut end_with_slash = false;
@@ -405,7 +415,7 @@ impl Request<'_> {
         }
     }
     //The directory_listing and send_file functions will return either 404, 500, or 200
-    pub fn directory_listing(&mut self, path:&str, no_body:bool) -> i32 {
+    pub fn directory_listing(&mut self, path:&str, no_body:bool, dot_files:bool) -> i32 {
         if self.headers_written {
             println!("Headers must not yet be sent when using send_file");
             return 500;
@@ -419,6 +429,7 @@ impl Request<'_> {
         for path in paths {
             let file = path.unwrap();
             let name = file.path().display().to_string();
+            if !dot_files && is_hidden(name.clone()) { continue; };
             let file_name = name.split("/").last().unwrap_or("");
             if file.path().is_dir() {
                 to_send += &format!("<li class=\"directory\"><a href=\"{}/\">{}</a></li>", file_name, file_name);

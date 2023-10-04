@@ -21,7 +21,7 @@ fn main() {
         upload: false,
         replace: false,
         delete: false,
-        hidden_dot_files_directory_listing: false,//todo
+        hidden_dot_files_directory_listing: true,
         custom500: "",
         custom404: "",
         custom403: "",
