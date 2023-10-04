@@ -10,7 +10,7 @@ pub struct SimpleWebServer {
 
 #[allow(dead_code)]
 impl SimpleWebServer {
-    pub fn log(msg: String) {
+    fn log(msg: String) {
         println!("{}", msg);
     }
     pub fn new(opts: Settings<'static>) -> SimpleWebServer {
@@ -51,14 +51,19 @@ impl SimpleWebServer {
             res.set_header("WWW-Authenticate", "Basic realm=\"SimpleWebServer\", charset=\"UTF-8\"");
         }
         res.set_status(code);
-        if (code == 401 && opts.custom401 != "") ||
+        if ((code == 401 && opts.custom401 != "") ||
            (code == 403 && opts.custom403 != "") ||
            (code == 404 && opts.custom404 != "") ||
-           (code == 500 && opts.custom500 != "") {
+           (code == 500 && opts.custom500 != "")) &&
+           msg != "NONOTUSECUSTOM" {
             let path = if code == 401 {opts.custom401} else if code == 403 {opts.custom403} else if code == 404 {opts.custom404} else if code == 500 {opts.custom500} else {""};
             let file_path = Self::from_relative(opts, path.clone().to_string());
             let entry = GetByPath::new(&file_path);
             if !entry.error && entry.is_file {
+                if entry.is_hidden() && !opts.hidden_dot_files {
+                    Self::error(res, opts, if code == 404 { "NONOTUSECUSTOM" } else { "" }, 404);
+                    return;
+                }
                 if res.send_file(&entry.path, res.method == "HEAD") == 200 {
                     return;
                 }
@@ -153,6 +158,10 @@ impl SimpleWebServer {
         if opts.exclude_dot_html && res.origpath != "/" && !res.origpath.ends_with("/") {
             let entry = GetByPath::new(&(file_path.clone()+".html"));
             if !entry.error && entry.is_file {
+                if entry.is_hidden() && !opts.hidden_dot_files {
+                    Self::error(res, opts, "", 404);
+                    return;
+                }
                 res.set_header("content-type", "text/html; charset=utf-8");
                 if res.send_file(&entry.path, is_head) == 200 {
                     return;
@@ -160,6 +169,10 @@ impl SimpleWebServer {
             }
             let entry2 = GetByPath::new(&(file_path.clone()+".htm"));
             if !entry2.error && entry2.is_file {
+                if entry.is_hidden() && !opts.hidden_dot_files {
+                    Self::error(res, opts, "", 404);
+                    return;
+                }
                 res.set_header("content-type", "text/html; charset=utf-8");
                 if res.send_file(&entry2.path, is_head) == 200 {
                     return;
@@ -167,7 +180,6 @@ impl SimpleWebServer {
             }
         }
         
-        let mut rendered = false;
         let entry = GetByPath::new(&file_path);
         if entry.is_file && res.origpath != "/" && res.origpath.ends_with("/") {
             res.set_header("Content-length", "0");
@@ -192,11 +204,19 @@ impl SimpleWebServer {
                     let file = path.unwrap().path().display().to_string();
                     let name = file.split("/").last().unwrap_or("");
                     if name == "index.html" || name == "index.htm" {
+                        if entry.is_hidden() && !opts.hidden_dot_files {
+                            Self::error(res, opts, "", 404);
+                            return;
+                        }
                         res.set_header("content-type", "text/html; charset=utf-8");
                         if res.send_file(&(file_path.clone()+name), is_head) == 200 {
                             return;
                         }
                     } else if name == "index.xhtml" || name == "index.xhtm" {
+                        if entry.is_hidden() && !opts.hidden_dot_files {
+                            Self::error(res, opts, "", 404);
+                            return;
+                        }
                         res.set_header("content-type", "application/xhtml+xml; charset=utf-8");
                         if res.send_file(&(file_path.clone()+name), is_head) == 200 {
                             return;
@@ -206,7 +226,12 @@ impl SimpleWebServer {
             }
         }
         
-        if entry.is_file {
+        
+        let mut rendered = false;
+        if entry.is_hidden() && !opts.hidden_dot_files {
+            Self::error(res, opts, "", 404);
+            return;//rust will complain about a "moved value" so just return.
+        } else if entry.is_file {
             rendered = res.send_file(&entry.path, is_head) == 200;
         } else if opts.directory_listing && entry.is_directory {
             rendered = res.directory_listing(&entry.path, is_head) == 200;

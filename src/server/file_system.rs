@@ -37,5 +37,14 @@ impl GetByPath {
             length: length
         }
     }
+    pub fn is_hidden(&self) -> bool {
+        let components: Vec<&str> = self.path.split('/').collect();
+        for component in components.iter() {
+            if component.starts_with('.') && component != &"." && component != &".." {
+                return true;
+            }
+        }
+        return false;
+    }
     //will write more later
 }

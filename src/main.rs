@@ -16,7 +16,7 @@ fn main() {
         directory_listing: true,
         exclude_dot_html: false,
         ipv6: false,
-        hidden_dot_files: false,//todo
+        hidden_dot_files: true,
         cors: false,
         upload: false,
         replace: false,
