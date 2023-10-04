@@ -299,10 +299,9 @@ impl Request<'_> {
             self.set_header("Transfer-Encoding", "Chunked");
         }
         //TODO - send date header
-        let mut header = ("HTTP/1.1 ".to_owned()+&self.status_code.to_string()+" "+self.status_message.as_str()).to_string();
+        let mut header = format!("HTTP/1.1 {} {}", self.status_code, self.status_message);
         for value in self.out_headers.iter() {
-            let key = value.name.to_owned()+": "+value.value.as_str();
-            header += &("\r\n".to_owned()+key.as_str());
+            header += &format!("\r\n{}:{}", value.name, value.value);
         }
         header += "\r\n\r\n";
         self.write_to_stream(header.as_bytes());
@@ -422,9 +421,9 @@ impl Request<'_> {
             let name = file.path().display().to_string();
             let file_name = name.split("/").last().unwrap_or("");
             if file.path().is_dir() {
-                to_send += &("<li class=\"directory\"><a href=\"".to_owned() + file_name + "/\">" + file_name + "</a></li>");
+                to_send += &format!("<li class=\"directory\"><a href=\"{}/\">{}</a></li>", file_name, file_name);
             } else {
-                to_send += &("<li><a href=\"".to_owned() + file_name + "\">" + file_name + "</a></li>");
+                to_send += &format!("<li><a href=\"{}/\">{}</a></li>", file_name, file_name);
             }
             
             let rawname = name.split("/").last().unwrap_or("").replace("\"", "\\\"");
@@ -433,14 +432,15 @@ impl Request<'_> {
             let modifiedstr = "";
             let filesize = 0;
             let filesizestr = "";
-            js_listing += &("<script>addRow(\"".to_owned()+&rawname+"\", \""+&rawname+"\", "+&is_dir+", \""+&filesize.to_string()+"\", \""+&filesizestr+"\", \""+&modified.to_string()+"\", \""+&modifiedstr+"\");</script>");
+            
+            js_listing += &format!("<script>addRow(\"{}\", \"{}\", {}, \"{}\", \"{}\", \"{}\", \"{}\");</script>", rawname, rawname, is_dir, filesize, filesizestr, modified, modifiedstr);
         }
-        to_send += &("</ul></div><div style=\"display: none;\" id=\"niceListing\">\n".to_owned()+&DIRECTORY_LISTING.to_owned());
+        to_send += &format!("</ul></div><div style=\"display: none;\" id=\"niceListing\">\n{}", DIRECTORY_LISTING);
         
         if self.origpath != "/" {
             to_send += "<script>onHasParentDirectory();</script>";
         }
-        to_send += &("<script>start(\"".to_owned()+&self.path.replace("\"", "\\\"")+"\")</script>");
+        to_send += &format!("<script>start(\"{}\")</script>", self.path.replace("\"", "\\\""));
         
         to_send += &js_listing;
         
@@ -490,7 +490,8 @@ impl Request<'_> {
             if rparts[1].len() == 0 {
                 //file_end_offset = size - 1;
                 content_length = size - file_offset;
-                self.set_header("content-range", &("bytes ".to_owned()+&file_offset.to_string()+"-"+&(size-1).to_string()+"/"+&size.to_string()));
+                
+                self.set_header("content-range", &format!("bytes {}-{}/{}", file_offset, size-1, size));
                 code = if file_offset == 0 { 200 } else { 206 };
             } else {
                 match rparts[1].parse::<usize>() {
@@ -500,7 +501,7 @@ impl Request<'_> {
                     Err(_e) => {/*nada*/},
                 }
                 content_length = file_end_offset - file_offset + 1;
-                self.set_header("content-range", &("bytes ".to_owned()+&file_offset.to_string()+"-"+&file_end_offset.to_string()+"/"+&size.to_string()));
+                self.set_header("content-range", &format!("bytes {}-{}/{}", file_offset, file_end_offset, size));
                 code = 206;
             }
         }
@@ -592,7 +593,7 @@ impl Server {
         };
         let port = opts.port;
         let on_request = self.on_request;
-        match TcpListener::bind(host.to_string().to_owned()+":"+&port.to_string()) {
+        match TcpListener::bind(format!("{}:{}", host, port)) {
             Ok(listener) => {
                 match listener.set_nonblocking(true) {
                     Ok(_) => {},

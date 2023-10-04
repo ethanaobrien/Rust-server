@@ -78,7 +78,7 @@ impl SimpleWebServer {
         res.end();
     }
     fn from_relative(opts: Settings, path: String) -> String {
-        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
+        let mut file_path = format!("{}{}", opts.path.to_owned(), path).replace("\\", "/");
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
         }
