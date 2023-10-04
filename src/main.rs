@@ -10,8 +10,8 @@ fn main() {
         port: 8888,
         path: "C:/Users",
         local_network: false,
-        spa: false,//todo
-        rewrite_to: "",//todo
+        spa: false,
+        rewrite_to: "",
         index: false,
         directory_listing: true,
         exclude_dot_html: false,

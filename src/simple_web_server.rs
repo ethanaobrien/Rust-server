@@ -88,8 +88,13 @@ impl SimpleWebServer {
             }
         }
         
+        let mut rewrite_to = "";
+        if opts.spa && !res.path.contains(".") {
+            rewrite_to = if opts.rewrite_to != "" { opts.rewrite_to } else { "/index.html" };
+        }
+        
         if res.method == "GET" || res.method == "HEAD" {
-            Self::get(res, opts);
+            Self::get(res, opts, rewrite_to);
         } else if res.method == "PUT" {
             Self::put(res, opts);
         } else if res.method == "DELETE" {
@@ -193,8 +198,9 @@ impl SimpleWebServer {
         res.set_status(201);
         res.end();
     }
-    fn get(mut res:Request, opts: Settings) {
-        let file_path = Self::from_relative(opts, res.path.clone());
+    fn get(mut res:Request, opts: Settings, rewrite_to: &str) {
+        let path = if rewrite_to == "" { res.path.clone() } else { rewrite_to.to_string() };
+        let file_path = Self::from_relative(opts, path);
         let is_head = res.method == "HEAD";
         
         if opts.exclude_dot_html && res.origpath.ends_with(".html") || res.origpath.ends_with(".htm") {
