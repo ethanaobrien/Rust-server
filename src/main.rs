@@ -22,9 +22,10 @@ fn main() {
         replace: false,
         delete: false,
         hidden_dot_files_directory_listing: false,//todo
-        custom404: "",//todo
-        custom403: "",//todo
-        custom401: "",//todo
+        custom500: "",
+        custom404: "",
+        custom403: "",
+        custom401: "",
         http_auth: false,//todo
         http_auth_username: "admin",//todo
         http_auth_password: "admin",//todo

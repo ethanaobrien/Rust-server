@@ -2,6 +2,7 @@ use crate::server::Server;
 use crate::server::Settings;
 use crate::server::file_system::GetByPath;
 use crate::server::Request;
+use crate::server::httpcodes::get_http_message;
 
 pub struct SimpleWebServer {
     server: Server
@@ -9,6 +10,9 @@ pub struct SimpleWebServer {
 
 #[allow(dead_code)]
 impl SimpleWebServer {
+    pub fn log(msg: String) {
+        println!("{}", msg);
+    }
     pub fn new(opts: Settings<'static>) -> SimpleWebServer {
         SimpleWebServer {
             server: Server::new(opts, SimpleWebServer::on_request)
@@ -33,16 +37,52 @@ impl SimpleWebServer {
         }
         
         if res.method == "GET" || res.method == "HEAD" {
-            SimpleWebServer::get(res, opts);
+            Self::get(res, opts);
         } else if res.method == "PUT" {
-            SimpleWebServer::put(res, opts);
+            Self::put(res, opts);
         } else if res.method == "DELETE" {
-            SimpleWebServer::delete(res, opts);
+            Self::delete(res, opts);
         } else {
-            res.set_header("Content-length", "0");
-            res.set_status(501);
-            res.end();
+            Self::error(res, opts, "", 501);
         }
+    }
+    fn error(mut res:Request, opts: Settings, msg: &str, code: i32) {
+        if code == 401 {
+            res.set_header("WWW-Authenticate", "Basic realm=\"SimpleWebServer\", charset=\"UTF-8\"");
+        }
+        res.set_status(code);
+        if (code == 401 && opts.custom401 != "") ||
+           (code == 403 && opts.custom403 != "") ||
+           (code == 404 && opts.custom404 != "") ||
+           (code == 500 && opts.custom500 != "") {
+            let path = if code == 401 {opts.custom401} else if code == 403 {opts.custom403} else if code == 404 {opts.custom404} else if code == 500 {opts.custom500} else {""};
+            let file_path = Self::from_relative(opts, path.clone().to_string());
+            let entry = GetByPath::new(&file_path);
+            if !entry.error && entry.is_file {
+                if res.send_file(&entry.path, res.method == "HEAD") == 200 {
+                    return;
+                }
+            } else {
+                Self::log(format!("Failed to read from custom {} path (\"{}\")", code, file_path));
+            }
+        }
+        res.set_header("content-type", "text/html; charset=utf-8");
+        
+        let def_msg = format!("<h1>{} - {}</h1>\n\n<p>{}</p>", code, get_http_message(code), msg);
+        let default_msg = def_msg.as_bytes();
+        let size = default_msg.len();
+        res.set_header("Content-length", &size.to_string());
+        if res.method != "HEAD" {
+            res.write(default_msg);
+        }
+        res.end();
+    }
+    fn from_relative(opts: Settings, path: String) -> String {
+        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
+        while file_path.contains("//") {
+            file_path = file_path.replace("//", "/");
+        }
+        return file_path;
     }
     fn delete(mut res:Request, opts: Settings) {
         if !opts.delete {
@@ -51,16 +91,10 @@ impl SimpleWebServer {
             res.end();
             return;
         }
-        let path = res.path.clone();
-        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
-        while file_path.contains("//") {
-            file_path = file_path.replace("//", "/");
-        }
+        let file_path = Self::from_relative(opts, res.path.clone());
         let entry = GetByPath::new(&file_path);
         if entry.error || entry.is_directory {
-            res.set_header("Content-length", "0");
-            res.set_status(404);
-            res.end();
+            Self::error(res, opts, "", 404);
             return;
         }
         match std::fs::remove_file(&file_path) {
@@ -70,46 +104,32 @@ impl SimpleWebServer {
                 res.end();
             }
             Err(_) => {
-                res.set_header("Content-length", "0");
-                res.set_status(500);
-                res.end();
+                Self::error(res, opts, "", 500);
             }
         }
     }
     fn put(mut res:Request, opts: Settings) {
         if !opts.upload {
-            res.set_header("Content-length", "0");
-            res.set_status(400);
-            res.end();
+            Self::error(res, opts, "", 400);
             return;
         }
-        let path = res.path.clone();
-        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
-        while file_path.contains("//") {
-            file_path = file_path.replace("//", "/");
-        }
+        let file_path = Self::from_relative(opts, res.path.clone());
         let entry = GetByPath::new(&file_path);
         if (!entry.error && !opts.replace) || entry.is_directory {
             //file exists
-            res.set_header("Content-length", "0");
-            res.set_status(400);
-            res.end();
+            Self::error(res, opts, "", 400);
             return;
         } else if !entry.error {
             match std::fs::remove_file(&file_path) {
                 Ok(_) => {},
                 Err(_) => {
-                    res.set_header("Content-length", "0");
-                    res.set_status(500);
-                    res.end();
+                    Self::error(res, opts, "", 500);
                     return;
                 }
             }
         }
         if !res.write_to_file(&file_path) {
-            res.set_header("Content-length", "0");
-            res.set_status(500);
-            res.end();
+            Self::error(res, opts, "", 500);
             return;
         }
         res.set_header("Content-length", "0");
@@ -117,11 +137,7 @@ impl SimpleWebServer {
         res.end();
     }
     fn get(mut res:Request, opts: Settings) {
-        let path = res.path.clone();
-        let mut file_path = (opts.path.to_owned() + &path).replace("\\", "/");
-        while file_path.contains("//") {
-            file_path = file_path.replace("//", "/");
-        }
+        let file_path = Self::from_relative(opts, res.path.clone());
         let is_head = res.method == "HEAD";
         
         if opts.exclude_dot_html && res.origpath.ends_with(".html") || res.origpath.ends_with(".htm") {
@@ -150,7 +166,6 @@ impl SimpleWebServer {
                 }
             }
         }
-        
         
         let mut rendered = false;
         let entry = GetByPath::new(&file_path);
@@ -197,11 +212,7 @@ impl SimpleWebServer {
             rendered = res.directory_listing(&entry.path, is_head) == 200;
         }
         if !rendered {
-            let msg = "404 - file not found";
-            res.set_header("Content-length", msg.len().to_string().as_str());
-            res.set_status(404);
-            res.write_string(msg);
-            res.end();
+            Self::error(res, opts, "", 404);
         }
     }
 }

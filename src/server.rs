@@ -15,10 +15,10 @@ static DIRECTORY_LISTING: &'static str = include_str!("directory-listing-templat
 
 pub mod file_system;
 
-mod mime;
+pub mod mime;
 use crate::server::mime::get_mime_type;
 
-mod httpcodes;
+pub mod httpcodes;
 use crate::server::httpcodes::get_http_message;
 
 #[derive(Copy, Clone)]
@@ -37,9 +37,10 @@ pub struct Settings<'a> {
     pub replace: bool,
     pub delete: bool,
     pub hidden_dot_files_directory_listing: bool,
-    pub custom404: &'a str,
-    pub custom403: &'a str,
     pub custom401: &'a str,
+    pub custom403: &'a str,
+    pub custom404: &'a str,
+    pub custom500: &'a str,
     pub http_auth: bool,
     pub http_auth_username: &'a str,
     pub http_auth_password: &'a str,
