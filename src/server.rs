@@ -26,9 +26,14 @@ use crate::server::socket::Socket;
 extern crate openssl;
 use openssl::ssl::{SslMethod, SslAcceptor};
 use openssl::rsa::Rsa;
+use openssl::x509::X509Name;
 use openssl::x509::X509;
 use openssl::ssl::SslAcceptorBuilder;
 use openssl::pkey::PKey;
+use openssl::asn1::Asn1Time;
+use openssl::asn1::Asn1Integer;
+use openssl::x509::X509Builder;
+use openssl::bn::BigNum;
 
 fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
     
@@ -57,6 +62,50 @@ fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
     
     return builder
 }
+
+pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
+    let rsa = Rsa::generate(2048)?;
+    let private_key = PKey::from_rsa(rsa)?;
+
+    let mut x509_builder = X509Builder::new()?;
+    x509_builder.set_version(2)?;
+    
+    let mut subject = X509Name::builder()?;
+    subject.append_entry_by_text("commonName", "cn")?;
+    subject.append_entry_by_text("countryName", "US")?;
+    subject.append_entry_by_text("ST", "test-st")?;
+    subject.append_entry_by_text("localityName", "Simple Web Server")?;
+    subject.append_entry_by_text("organizationName", "Simple Web Server")?;
+    subject.append_entry_by_text("OU", "SWS")?;
+    subject.append_entry_by_text("CN", "127.0.0.1")?;
+    let subject_name = subject.build();
+    x509_builder.set_subject_name(&subject_name)?;
+
+    x509_builder.set_issuer_name(&subject_name)?;
+
+    let serial_number_bn = BigNum::from_u32(1).unwrap();
+
+    let serial_number = Asn1Integer::from_bn(&serial_number_bn)?;
+    x509_builder.set_serial_number(&serial_number)?;
+    x509_builder.set_serial_number(&serial_number)?;
+
+    let not_before = Asn1Time::days_from_now(0)?;
+    let not_after = Asn1Time::days_from_now(365)?;
+    x509_builder.set_not_before(&not_before)?;
+    x509_builder.set_not_after(&not_after)?;
+
+    x509_builder.set_pubkey(&private_key)?;
+
+    x509_builder.sign(&private_key, openssl::hash::MessageDigest::sha256())?;
+    
+    let x509_cert = x509_builder.build();
+    
+    let cert = String::from_utf8_lossy(&x509_cert.to_pem()?).to_string();
+    let key = String::from_utf8_lossy(&private_key.private_key_to_pem_pkcs8()?).to_string();
+
+    Ok((cert, key))
+}
+
 
 #[derive(Copy, Clone)]
 pub struct Settings<'a> {
@@ -660,7 +709,7 @@ impl Server {
                 thread::spawn(move || {
                     let stopped: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
                     
-                    println!("Server started on http(s)://{}:{}/", host, port);
+                    println!("Server started on http{}://{}:{}/", if opts.https { "s" } else { "" }, host, port);
                     for stream in listener.incoming() {
                         match stream {
                             Ok(stream) => {
