@@ -1,4 +1,3 @@
-use std::net::TcpStream;
 use std::net::TcpListener;
 use std::thread;
 use std::io::{ Read, Write, SeekFrom, Seek };
@@ -20,6 +19,44 @@ use crate::server::mime::get_mime_type;
 
 pub mod httpcodes;
 use crate::server::httpcodes::get_http_message;
+
+mod socket;
+use crate::server::socket::Socket;
+
+extern crate openssl;
+use openssl::ssl::{SslMethod, SslAcceptor};
+use openssl::rsa::Rsa;
+use openssl::x509::X509;
+use openssl::ssl::SslAcceptorBuilder;
+use openssl::pkey::PKey;
+
+fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
+    
+    let cert_str = cert_str
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>()
+        .join("\n");
+
+    let key_str = key_str
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>()
+        .join("\n");
+
+    let cert = X509::from_pem(cert_str.as_bytes()).unwrap();
+    let key = Rsa::private_key_from_pem(key_str.as_bytes()).unwrap();
+    
+    let pkey = PKey::from_rsa(key).unwrap();
+    
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    builder.set_private_key(&pkey).unwrap();
+    builder.set_certificate(&cert).unwrap();
+    
+    return builder
+}
 
 #[derive(Copy, Clone)]
 pub struct Settings<'a> {
@@ -44,7 +81,10 @@ pub struct Settings<'a> {
     pub http_auth: bool,
     pub http_auth_username: &'a str,
     pub http_auth_password: &'a str,
-    pub index: bool
+    pub index: bool,
+    pub https: bool,
+    pub https_cert: &'a str,
+    pub https_key: &'a str,
 }
 
 #[allow(dead_code)]
@@ -175,7 +215,7 @@ pub struct Request<'a> {
     pub path: String,
     pub origpath: String,
     pub method: String,
-    stream: &'a TcpStream,
+    stream: &'a mut Socket,
     headers: Vec<Header>,
     out_headers: Vec<Header>,
     status_code: i32,
@@ -190,7 +230,7 @@ pub struct Request<'a> {
 #[allow(dead_code)]
 #[allow(unused_assignments)]
 impl Request<'_> {
-    pub fn new(stream:&TcpStream, head:String) -> Request {
+    pub fn new(stream:&mut Socket, head:String) -> Request {
         let lines = head.split("\r\n").collect::<Vec<_>>();
         let parts = lines[0].split(" ").collect::<Vec<_>>();
         let mut headers = Vec::new();
@@ -540,7 +580,7 @@ impl Request<'_> {
     }
 }
 
-fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_data: Settings, stopped_clone: &Arc<AtomicBool>) -> bool {
+fn read_header(stream:&mut Socket, on_request:fn(Request, Settings), user_data: Settings, stopped_clone: &Arc<AtomicBool>) -> bool {
     let mut buffer = [0; 1];
     let mut request = String::new();
     
@@ -550,7 +590,14 @@ fn read_header(mut stream:&TcpStream, on_request:fn(Request, Settings), user_dat
                 if bytes_read == 0 {
                     return false;
                 }
-                request += &String::from_utf8_lossy(&buffer[..bytes_read]);
+                match &String::from_utf8(buffer[..bytes_read].to_vec()) {
+                    Ok(s) => {
+                        request += s;
+                    },
+                    //an https request to an http server? Either way, we cant do anything with the data
+                    Err(_) => { return false; },
+                }
+                
                 if request.ends_with("\r\n\r\n") {
                     break;
                 }
@@ -611,18 +658,48 @@ impl Server {
                     Err(_) => { return false; },
                 }
                 thread::spawn(move || {
-                    println!("Server started on http://{}:{}/", host, port);
                     let stopped: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+                    
+                    println!("Server started on http(s)://{}:{}/", host, port);
                     for stream in listener.incoming() {
                         match stream {
-                            Ok(s) => {
+                            Ok(stream) => {
                                 let stopped_clone = Arc::clone(&stopped);
-                                thread::spawn(move || {
-                                    while read_header(&s, on_request, opts, &stopped_clone) {
-                                        // keep alive
+                                if opts.https {
+                                    match listener.set_nonblocking(false) {
+                                        Ok(_) => {},
+                                        Err(_) => { return; },
                                     }
-                                    drop(s);
-                                });
+                                    let builder = to_acceptor(opts.https_cert, opts.https_key);
+                                    let acceptor = Arc::new(builder.build());
+                                    thread::spawn(move || {
+                                        match acceptor.accept(stream) {
+                                            Ok(stream) => {
+                                                match stream.get_ref().set_nonblocking(true) {
+                                                    Ok(_) => {},
+                                                    Err(_) => { return; },
+                                                }
+                                                let mut socket = Socket::new(None, Some(stream));
+                                                while read_header(&mut socket, on_request, opts, &stopped_clone) {
+                                                    // keep alive
+                                                }
+                                                socket.drop();
+                                            }
+                                            Err(ref _e) => {
+                                                //99% of the time this is an ssl handshake error. We should be able to safely ignore this.
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    thread::spawn(move || {
+                                        let mut socket = Socket::new(Some(stream), None);
+                                        while read_header(&mut socket, on_request, opts, &stopped_clone) {
+                                            // keep alive
+                                        }
+                                        socket.drop();
+                                    });
+                                }
+                                
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 let message = receiver.lock().unwrap().try_recv();
