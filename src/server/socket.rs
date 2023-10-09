@@ -5,17 +5,17 @@ use std::io::{Read, Write};
 
 pub struct Socket {
     stream: Option<TcpStream>,
-	ssl_stream: Option<SslStream<TcpStream>>
+    ssl_stream: Option<SslStream<TcpStream>>
 }
 
 impl Socket {
-	pub fn new(stream: Option<TcpStream>, ssl: Option<SslStream<TcpStream>>) -> Socket {
-		Socket {
-			stream,
+    pub fn new(stream: Option<TcpStream>, ssl: Option<SslStream<TcpStream>>) -> Socket {
+        Socket {
+            stream,
             ssl_stream: ssl
-		}
-	}
-	pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        }
+    }
+    pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.ssl_stream {
             Some(ref mut ssl_stream) => {
                 ssl_stream.read(buf)
@@ -32,8 +32,8 @@ impl Socket {
                 }
             }
         }
-	}
-	pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
+    }
+    pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
         match self.ssl_stream {
             Some(ref mut ssl_stream) => {
                 ssl_stream.write_all(buf)
@@ -50,8 +50,8 @@ impl Socket {
                 }
             }
         }
-	}
-	pub fn drop(self) {
+    }
+    pub fn drop(self) {
         match self.ssl_stream {
             Some(ssl_stream) => {
                 drop(ssl_stream);
@@ -67,6 +67,6 @@ impl Socket {
                 }
             }
         }
-	}
-	
+    }
+    
 }
