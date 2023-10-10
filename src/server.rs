@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static DIRECTORY_LISTING: &'static str = include_str!("directory-listing-template.html");
+static DIRECTORY_LISTING: &str = include_str!("directory-listing-template.html");
 
 pub mod file_system;
 
@@ -60,7 +60,7 @@ fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
     builder.set_private_key(&pkey).unwrap();
     builder.set_certificate(&cert).unwrap();
     
-    return builder
+    builder
 }
 
 pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
@@ -145,7 +145,7 @@ pub fn url_decode(input: &str) -> String {
     while let Some(byte) = bytes.next() {
         if byte == b'%' {
             if let (Some(hex1), Some(hex2)) = (bytes.next(), bytes.next()) {
-                let hex_chars = vec![hex1, hex2];
+                let hex_chars = [hex1, hex2];
                 let hex_string: String = hex_chars.iter().map(|&x| x as char).collect();
                 if let Ok(byte) = u8::from_str_radix(&hex_string, 16) {
                     utf8_buffer.push(byte);
@@ -180,7 +180,7 @@ pub fn url_decode(input: &str) -> String {
             }
         }
     }
-    return decoded;
+    decoded
 }
 
 fn is_hidden(path: String) -> bool {
@@ -190,7 +190,7 @@ fn is_hidden(path: String) -> bool {
             return true;
         }
     }
-    return false;
+    false
 }
 
 #[allow(dead_code)]
@@ -207,7 +207,7 @@ fn relative_path(cur_path: &str, req_path: &str) -> String {
         match *w {
             "" | "." => { /* . means current directory. Leave this here for spacing */ }
             ".." => {
-                if split1.len() > 0 {
+                if !split1.is_empty() {
                     split1.pop();
                 }
             }
@@ -281,7 +281,7 @@ pub struct Request<'a> {
 impl Request<'_> {
     pub fn new(stream:&mut Socket, head:String) -> Request {
         let lines = head.split("\r\n").collect::<Vec<_>>();
-        let parts = lines[0].split(" ").collect::<Vec<_>>();
+        let parts = lines[0].split(' ').collect::<Vec<_>>();
         let mut headers = Vec::new();
         let mut length = 0;
         for (i, line) in lines.iter().enumerate() {
@@ -299,19 +299,19 @@ impl Request<'_> {
             }
         }
         let path = relative_path("", &url_decode(parts[1].splitn(2, '?').collect::<Vec<_>>()[0]));
-        let origpath = relative_path("", &parts[1].splitn(2, '?').collect::<Vec<_>>()[0]);
+        let origpath = relative_path("", parts[1].splitn(2, '?').collect::<Vec<_>>()[0]);
         //todo, parse url arguments
         Request {
             method: parts[0].to_string(),
-            path: path,
-            origpath: origpath,
-            stream: stream,
-            headers: headers,
+            path,
+            origpath,
+            stream,
+            headers,
             out_headers: Vec::new(),
             status_code: 200,
             status_message: String::from("OK"),
             headers_written: false,
-            length: length,
+            length,
             consumed: 0,
             finished: false,
             connection_closed: false
@@ -323,7 +323,7 @@ impl Request<'_> {
             //Consume the whole/rest of the body
             bytes = self.length - self.consumed;
         }
-        if bytes <= 0 {
+        if bytes == 0 {
             return Ok(b"".to_vec());
         }
         let mut buffer = vec![0; bytes];
@@ -335,15 +335,15 @@ impl Request<'_> {
                 }
                 //println!("{} bytes read", bytes_read);
                 self.consumed += bytes_read;
-                return Ok(buffer);
+                Ok(buffer)
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(10));
-                return Err(false);
+                Err(false)
             }
             Err(_) => {
                 println!("read error");
-                return Err(true);
+                Err(true)
             }
         }
     }
@@ -371,7 +371,7 @@ impl Request<'_> {
                 }
             }
         }
-        return true;
+        true
     }
     fn consume_body(&mut self) {
         let read_chunk_size = 1024 * 1024 * 4;
@@ -387,7 +387,7 @@ impl Request<'_> {
     pub fn read_string(&mut self, bytes:usize) -> String {
         let read = self.read(bytes).unwrap_or("".into());
         let msg = &String::from_utf8_lossy(&read[..read.len()]);
-        return msg.to_string();
+        msg.to_string()
     }
     fn send_headers(&mut self) {
         if self.headers_written {
@@ -418,7 +418,7 @@ impl Request<'_> {
                 self.connection_closed = true;
             },
         };
-        return rv;
+        rv
     }
     pub fn write(&mut self, data:&[u8]) {
         if !self.headers_written { self.send_headers(); };
@@ -433,7 +433,7 @@ impl Request<'_> {
     }
     fn format_header(&self, header:&str) -> String {
         let binding = header.to_string();
-        let mut parts: Vec<String> = binding.split("-").map(|s| s.to_string()).collect();
+        let mut parts: Vec<String> = binding.split('-').map(|s| s.to_string()).collect();
         for part in parts.iter_mut() {
             *part = part.to_lowercase();
             let capitalized_char = part.chars().next().unwrap().to_uppercase().next().unwrap();
@@ -442,7 +442,7 @@ impl Request<'_> {
             result.push_str(&part[1..]);
             *part = result;
         }
-        return parts.join("-").to_string();
+        parts.join("-").to_string()
     }
     pub fn write_string(&mut self, data:&str) {
         self.write(data.to_string().as_bytes());
@@ -454,7 +454,7 @@ impl Request<'_> {
                 return key.value.as_str().to_string();
             }
         }
-        return String::new();
+        String::new()
     }
     pub fn header_value_equals(&mut self, header:&str, value:&str) -> bool {
         let head = header.to_string();
@@ -464,7 +464,7 @@ impl Request<'_> {
                 return key.value.to_lowercase() == val.to_lowercase();
             }
         }
-        return false;
+        false
     }
     pub fn header_exists(&mut self, header:&str) -> bool {
         let head = header.to_string();
@@ -473,7 +473,7 @@ impl Request<'_> {
                 return true;
             }
         }
-        return false;
+        false
     }
     pub fn set_header(&mut self, header:&str, value:&str) {
         // Are these header names and values valid?
@@ -519,14 +519,14 @@ impl Request<'_> {
             let file = path.unwrap();
             let name = file.path().display().to_string();
             if !dot_files && is_hidden(name.clone()) { continue; };
-            let file_name = name.split("/").last().unwrap_or("");
+            let file_name = name.split('/').last().unwrap_or("");
             if file.path().is_dir() {
                 to_send += &format!("<li class=\"directory\"><a href=\"{}/\">{}</a></li>", file_name, file_name);
             } else {
                 to_send += &format!("<li><a href=\"{}/\">{}</a></li>", file_name, file_name);
             }
             
-            let rawname = name.split("/").last().unwrap_or("").replace("\"", "\\\"");
+            let rawname = name.split('/').last().unwrap_or("").replace('"', "\\\"");
             let is_dir = if file.path().is_dir() { "true" } else { "false" };
             let modified = 0;
             let modifiedstr = "";
@@ -540,7 +540,7 @@ impl Request<'_> {
         if self.origpath != "/" {
             to_send += "<script>onHasParentDirectory();</script>";
         }
-        to_send += &format!("<script>start(\"{}\")</script>", self.path.replace("\"", "\\\""));
+        to_send += &format!("<script>start(\"{}\")</script>", self.path.replace('"', "\\\""));
         
         to_send += &js_listing;
         
@@ -553,7 +553,7 @@ impl Request<'_> {
         }
         self.end();
         
-        return 200;
+        200
     }
     pub fn send_file(&mut self, path:&str, no_body:bool) -> i32 {
         if self.headers_written {
@@ -565,7 +565,7 @@ impl Request<'_> {
         let Ok(mut file) = File::open(path) else {
             return 404;
         };
-        let ext = path.split(".").last().unwrap();
+        let ext = path.split('.').last().unwrap();
         self.set_header("content-type", get_mime_type(ext));
         let size : usize = file.metadata().unwrap().len().try_into().unwrap();
         let mut written : usize = 0;
@@ -578,8 +578,8 @@ impl Request<'_> {
         //println!("{}", self.get_header("Range"));
         if range_header != String::new() {
             //println!("Range Request");
-            let range = range_header.split("=").collect::<Vec<_>>()[1].trim();
-            let rparts = range.split("-").collect::<Vec<_>>();
+            let range = range_header.split('=').collect::<Vec<_>>()[1].trim();
+            let rparts = range.split('-').collect::<Vec<_>>();
             match rparts[0].parse::<usize>() {
                 Ok(num) => {
                     file_offset = num;
@@ -587,7 +587,7 @@ impl Request<'_> {
                 Err(_e) => {/*nada*/},
             }
             //println!("{} {}", range_header, rparts[1].len());
-            if rparts[1].len() == 0 {
+            if rparts[1].is_empty() {
                 //file_end_offset = size - 1;
                 content_length = size - file_offset;
                 
@@ -625,7 +625,7 @@ impl Request<'_> {
         }
         drop(file);
         self.end();
-        return 200;
+        200
     }
 }
 
@@ -653,7 +653,7 @@ fn read_header(stream:&mut Socket, on_request:fn(Request, Settings), user_data: 
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 let value = stopped_clone.load(Ordering::Relaxed);
-                if value == true { break; }
+                if value { break; }
                 thread::sleep(Duration::from_millis(10));
             }
             Err(_) => {
@@ -661,11 +661,11 @@ fn read_header(stream:&mut Socket, on_request:fn(Request, Settings), user_data: 
             },
         }
     }
-    if request.len() == 0 {
+    if request.is_empty() {
         return false;
     }
     (on_request)(Request::new(stream, request), user_data);
-    return true;
+    true
 }
 
 #[allow(dead_code)]
@@ -695,9 +695,7 @@ impl Server {
         let opts = self.opts;
         let host = if opts.local_network {
             if opts.ipv6 { "::" } else { "0.0.0.0" }
-        } else {
-            if opts.ipv6 { "::1" } else { "127.0.0.1" }
-        };
+        } else if opts.ipv6 { "::1" } else { "127.0.0.1" };
         let port = opts.port;
         let on_request = self.on_request;
         match TcpListener::bind(format!("{}:{}", host, port)) {
@@ -720,7 +718,7 @@ impl Server {
                                         Err(_) => { return; },
                                     }
                                     let builder = to_acceptor(opts.https_cert, opts.https_key);
-                                    let acceptor = Arc::new(builder.build());
+                                    let acceptor = builder.build();
                                     thread::spawn(move || {
                                         match acceptor.accept(stream) {
                                             Ok(stream) => {
@@ -738,6 +736,7 @@ impl Server {
                                                 //99% of the time this is an ssl handshake error. We should be able to safely ignore this.
                                             }
                                         }
+                                        drop(acceptor);
                                     });
                                 } else {
                                     thread::spawn(move || {
@@ -752,14 +751,11 @@ impl Server {
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 let message = receiver.lock().unwrap().try_recv();
-                                match message {
-                                    Ok(job) => {
-                                        if job == String::from("kill") {
-                                            stopped.store(true, Ordering::Relaxed);
-                                            break;
-                                        }
+                                if let Ok(job) = message {
+                                    if job == *"kill" {
+                                        stopped.store(true, Ordering::Relaxed);
+                                        break;
                                     }
-                                    Err(_) => {}
                                 }
                                 thread::sleep(Duration::from_millis(10));
                             }
@@ -775,7 +771,7 @@ impl Server {
             },
         }
         self.running = true;
-        return true;
+        true
     }
     pub fn terminate(&mut self) {
         if !self.running { return; };

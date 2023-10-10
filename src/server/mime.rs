@@ -994,5 +994,5 @@ pub fn get_mime_type(extension: &str) -> &str {
             return mime_type;
         }
     }
-    return "";
+    ""
 }

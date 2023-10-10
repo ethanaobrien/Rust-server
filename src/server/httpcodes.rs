@@ -50,5 +50,5 @@ pub fn get_http_message(code: i32) -> String {
             return message.to_string();
         }
     }
-    return String::new();
+    String::new()
 }

@@ -32,9 +32,9 @@ impl GetByPath {
         GetByPath {
             is_file: file,
             is_directory: dir,
-            error: error,
+            error,
             path: path.to_string(),
-            length: length
+            length
         }
     }
     pub fn is_hidden(&self) -> bool {
@@ -44,7 +44,7 @@ impl GetByPath {
                 return true;
             }
         }
-        return false;
+        false
     }
     //will write more later
 }

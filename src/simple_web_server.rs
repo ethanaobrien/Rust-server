@@ -24,16 +24,16 @@ pub fn decode_base64(input: &[u8]) -> String {
     	let c = decode_char(chunk[2]);
     	let d = decode_char(chunk[3]);
 
-    	let dec1 = ((a << 2) | (b & 0x30) >> 4) as u8;
-    	let dec2 = (((b & 0x0F) << 4) | (c & 0x3C) >> 2) as u8;
-    	let dec3 = (((c & 0x03) << 6) | (d)) as u8;
+    	let dec1 = (a << 2) | (b & 0x30) >> 4;
+    	let dec2 = ((b & 0x0F) << 4) | (c & 0x3C) >> 2;
+    	let dec3 = ((c & 0x03) << 6) | (d);
 
     	output.push(dec1);
     	output.push(dec2);
     	output.push(dec3);
 	}
 
-	String::from_utf8(output).unwrap_or(String::new()).replace("\0", "")
+	String::from_utf8(output).unwrap_or(String::new()).replace('\0', "")
 }
 fn decode_char(input: u8) -> u8 {
 	BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
@@ -50,24 +50,24 @@ impl SimpleWebServer {
         }
     }
     pub fn start(&mut self) -> bool {
-        return self.server.start();
+        self.server.start()
     }
     pub fn terminate(&mut self) {
-        return self.server.terminate();
+        self.server.terminate()
     }
     fn validate_auth(auth: String, username: &str, password: &str) -> bool {
-        if auth == "" { return false; };
+        if auth.is_empty() { return false; };
         if !auth.to_lowercase().starts_with("basic ") { return false; };
         let base64_data = &auth[6..];
         let decoded_str = decode_base64(base64_data.as_bytes());
-        if decoded_str == "" || decoded_str == ":" { return false; };
+        if decoded_str.is_empty() || decoded_str == ":" { return false; };
         if let Some(index) = decoded_str.find(':') {
             let auth_username = &decoded_str[0..index];
             let auth_password = &decoded_str[index + 1..];
             
             return auth_username == username && auth_password == password;
         }
-        return false;
+        false
     }
     fn on_request(mut res:Request, opts: Settings) {
         //todo, this thing
@@ -81,16 +81,14 @@ impl SimpleWebServer {
             res.set_header("access-control-max-age", "120");
         }
         
-        if opts.http_auth {
-            if !Self::validate_auth(res.get_header("authorization"), opts.http_auth_username, opts.http_auth_password) {
-                Self::error(res, opts, "", 401);
-                return;
-            }
+        if opts.http_auth && !Self::validate_auth(res.get_header("authorization"), opts.http_auth_username, opts.http_auth_password) {
+            Self::error(res, opts, "", 401);
+            return;
         }
         
         let mut rewrite_to = "";
-        if opts.spa && !res.path.contains(".") {
-            rewrite_to = if opts.rewrite_to != "" { opts.rewrite_to } else { "/index.html" };
+        if opts.spa && !res.path.contains('.') {
+            rewrite_to = if !opts.rewrite_to.is_empty() { opts.rewrite_to } else { "/index.html" };
         }
         
         if res.method == "GET" || res.method == "HEAD" {
@@ -108,10 +106,10 @@ impl SimpleWebServer {
             res.set_header("WWW-Authenticate", "Basic realm=\"SimpleWebServer\", charset=\"UTF-8\"");
         }
         res.set_status(code);
-        if ((code == 401 && opts.custom401 != "") ||
-           (code == 403 && opts.custom403 != "") ||
-           (code == 404 && opts.custom404 != "") ||
-           (code == 500 && opts.custom500 != "")) &&
+        if ((code == 401 && !opts.custom401.is_empty()) ||
+           (code == 403 && !opts.custom403.is_empty()) ||
+           (code == 404 && !opts.custom404.is_empty()) ||
+           (code == 500 && !opts.custom500.is_empty())) &&
            msg != "NONOTUSECUSTOM" {
             let path = if code == 401 {opts.custom401} else if code == 403 {opts.custom403} else if code == 404 {opts.custom404} else if code == 500 {opts.custom500} else {""};
             let file_path = Self::from_relative(opts, path.clone().to_string());
@@ -140,11 +138,11 @@ impl SimpleWebServer {
         res.end();
     }
     fn from_relative(opts: Settings, path: String) -> String {
-        let mut file_path = format!("{}{}", opts.path.to_owned(), path).replace("\\", "/");
+        let mut file_path = format!("{}{}", opts.path.to_owned(), path).replace('\\', "/");
         while file_path.contains("//") {
             file_path = file_path.replace("//", "/");
         }
-        return file_path;
+        file_path
     }
     fn delete(mut res:Request, opts: Settings) {
         if !opts.delete {
@@ -199,7 +197,7 @@ impl SimpleWebServer {
         res.end();
     }
     fn get(mut res:Request, opts: Settings, rewrite_to: &str) {
-        let path = if rewrite_to == "" { res.path.clone() } else { rewrite_to.to_string() };
+        let path = if rewrite_to.is_empty() { res.path.clone() } else { rewrite_to.to_string() };
         let file_path = Self::from_relative(opts, path);
         let is_head = res.method == "HEAD";
         
@@ -213,7 +211,7 @@ impl SimpleWebServer {
             return;
         }
         
-        if opts.exclude_dot_html && res.origpath != "/" && !res.origpath.ends_with("/") {
+        if opts.exclude_dot_html && res.origpath != "/" && !res.origpath.ends_with('/') {
             let entry = GetByPath::new(&(file_path.clone()+".html"));
             if !entry.error && entry.is_file {
                 if entry.is_hidden() && !opts.hidden_dot_files {
@@ -239,7 +237,7 @@ impl SimpleWebServer {
         }
         
         let entry = GetByPath::new(&file_path);
-        if entry.is_file && res.origpath != "/" && res.origpath.ends_with("/") {
+        if entry.is_file && res.origpath != "/" && res.origpath.ends_with('/') {
             res.set_header("Content-length", "0");
             let mut path = res.origpath.clone();
             path.pop();
@@ -248,7 +246,7 @@ impl SimpleWebServer {
             res.end();
             return;
         }
-        if entry.is_directory && !res.origpath.ends_with("/") {
+        if entry.is_directory && !res.origpath.ends_with('/') {
             res.set_header("Content-length", "0");
             let path = res.origpath.clone();
             res.set_header("location", &(path+"/"));
@@ -260,7 +258,7 @@ impl SimpleWebServer {
             if let Ok(paths) = std::fs::read_dir(file_path.clone()) {
                 for path in paths {
                     let file = path.unwrap().path().display().to_string();
-                    let name = file.split("/").last().unwrap_or("");
+                    let name = file.split('/').last().unwrap_or("");
                     if name == "index.html" || name == "index.htm" {
                         if entry.is_hidden() && !opts.hidden_dot_files {
                             Self::error(res, opts, "", 404);
