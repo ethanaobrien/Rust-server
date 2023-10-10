@@ -52,21 +52,7 @@ impl Socket {
         }
     }
     pub fn drop(self) {
-        match self.ssl_stream {
-            Some(ssl_stream) => {
-                drop(ssl_stream);
-            }
-            None => {
-                match self.stream {
-                    Some(stream) => {
-                        drop(stream);
-                    }
-                    None => {
-                        println!("Error getting socket type. This should not be possible!!");
-                    }
-                }
-            }
-        }
+        drop(self.ssl_stream);
+        drop(self.stream);
     }
-    
 }

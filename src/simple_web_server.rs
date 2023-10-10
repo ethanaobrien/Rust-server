@@ -112,7 +112,7 @@ impl SimpleWebServer {
            (code == 500 && !opts.custom500.is_empty())) &&
            msg != "NONOTUSECUSTOM" {
             let path = if code == 401 {opts.custom401} else if code == 403 {opts.custom403} else if code == 404 {opts.custom404} else if code == 500 {opts.custom500} else {""};
-            let file_path = Self::from_relative(opts, path.clone().to_string());
+            let file_path = Self::from_relative(opts, path.to_string());
             let entry = GetByPath::new(&file_path);
             if !entry.error && entry.is_file {
                 if entry.is_hidden() && !opts.hidden_dot_files {

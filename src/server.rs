@@ -28,14 +28,13 @@ use openssl::ssl::{SslMethod, SslAcceptor};
 use openssl::rsa::Rsa;
 use openssl::x509::X509Name;
 use openssl::x509::X509;
-use openssl::ssl::SslAcceptorBuilder;
 use openssl::pkey::PKey;
 use openssl::asn1::Asn1Time;
 use openssl::asn1::Asn1Integer;
 use openssl::x509::X509Builder;
 use openssl::bn::BigNum;
 
-fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
+fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
     
     let cert_str = cert_str
         .lines()
@@ -60,7 +59,7 @@ fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptorBuilder {
     builder.set_private_key(&pkey).unwrap();
     builder.set_certificate(&cert).unwrap();
     
-    builder
+    builder.build()
 }
 
 pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
@@ -713,19 +712,12 @@ impl Server {
                             Ok(stream) => {
                                 let stopped_clone = Arc::clone(&stopped);
                                 if opts.https {
-                                    match listener.set_nonblocking(false) {
-                                        Ok(_) => {},
-                                        Err(_) => { return; },
-                                    }
-                                    let builder = to_acceptor(opts.https_cert, opts.https_key);
-                                    let acceptor = builder.build();
+                                    let _ = listener.set_nonblocking(false);
+                                    let acceptor = to_acceptor(opts.https_cert, opts.https_key);
                                     thread::spawn(move || {
                                         match acceptor.accept(stream) {
                                             Ok(stream) => {
-                                                match stream.get_ref().set_nonblocking(true) {
-                                                    Ok(_) => {},
-                                                    Err(_) => { return; },
-                                                }
+                                                let _ = stream.get_ref().set_nonblocking(true);
                                                 let mut socket = Socket::new(None, Some(stream));
                                                 while read_header(&mut socket, on_request, opts, &stopped_clone) {
                                                     // keep alive
@@ -737,6 +729,7 @@ impl Server {
                                             }
                                         }
                                         drop(acceptor);
+                                        drop(stopped_clone);
                                     });
                                 } else {
                                     thread::spawn(move || {
@@ -745,6 +738,7 @@ impl Server {
                                             // keep alive
                                         }
                                         socket.drop();
+                                        drop(stopped_clone);
                                     });
                                 }
                                 
