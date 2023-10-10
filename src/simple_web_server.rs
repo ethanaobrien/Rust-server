@@ -203,7 +203,7 @@ impl SimpleWebServer {
         let file_path = Self::from_relative(opts, path);
         let is_head = res.method == "HEAD";
         
-        if opts.exclude_dot_html && res.origpath.ends_with(".html") || res.origpath.ends_with(".htm") {
+        if opts.exclude_dot_html && (res.origpath.ends_with(".html") || res.origpath.ends_with(".htm")) {
             let mut new_path = res.origpath.clone();
             let new_length = new_path.len() - if res.origpath.ends_with(".html") { 5 } else { 4 };
             new_path.truncate(new_length);
