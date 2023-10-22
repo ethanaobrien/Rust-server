@@ -62,6 +62,7 @@ fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
     builder.build()
 }
 
+#[allow(dead_code)]
 pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
     let rsa = Rsa::generate(2048)?;
     let private_key = PKey::from_rsa(rsa)?;
