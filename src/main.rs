@@ -16,6 +16,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[arg(default_value = "/")]
     path: String,
 
     #[arg(short, long, default_value_t = 8080, help = "Port to listen on")]

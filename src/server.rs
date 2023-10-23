@@ -183,7 +183,7 @@ pub fn url_decode(input: &str) -> String {
     decoded
 }
 
-fn is_hidden(path: String) -> bool {
+fn is_hidden(path: &String) -> bool {
     let components: Vec<&str> = path.split('/').collect();
     for component in components.iter() {
         if component.starts_with('.') && component != &"." && component != &".." {
@@ -518,7 +518,7 @@ impl Request<'_> {
         for path in paths {
             let file = path.unwrap();
             let name = file.path().display().to_string();
-            if !dot_files && is_hidden(name.clone()) { continue; };
+            if !dot_files && is_hidden(&name) { continue; };
             let file_name = name.split('/').last().unwrap_or("");
             if file.path().is_dir() {
                 to_send += &format!("<li class=\"directory\"><a href=\"{}/\">{}</a></li>", file_name, file_name);
