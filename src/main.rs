@@ -32,7 +32,6 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    println!("lna");
     let settings = Settings {
         path: string_to_static_str(args.path),
         index: args.index,
