@@ -20,47 +20,21 @@ use crate::server::mime::get_mime_type;
 pub mod httpcodes;
 use crate::server::httpcodes::get_http_message;
 
+mod threadpool;
+use crate::server::threadpool::{ThreadPool, TlsThreadPool};
+
 mod socket;
 use crate::server::socket::Socket;
 
 extern crate openssl;
-use openssl::ssl::{SslMethod, SslAcceptor};
+use openssl::ssl::SslAcceptor;
 use openssl::rsa::Rsa;
 use openssl::x509::X509Name;
-use openssl::x509::X509;
 use openssl::pkey::PKey;
 use openssl::asn1::Asn1Time;
 use openssl::asn1::Asn1Integer;
 use openssl::x509::X509Builder;
 use openssl::bn::BigNum;
-
-fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
-    
-    let cert_str = cert_str
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<&str>>()
-        .join("\n");
-
-    let key_str = key_str
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<&str>>()
-        .join("\n");
-
-    let cert = X509::from_pem(cert_str.as_bytes()).unwrap();
-    let key = Rsa::private_key_from_pem(key_str.as_bytes()).unwrap();
-    
-    let pkey = PKey::from_rsa(key).unwrap();
-    
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key(&pkey).unwrap();
-    builder.set_certificate(&cert).unwrap();
-    
-    builder.build()
-}
 
 #[allow(dead_code)]
 pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
@@ -708,14 +682,18 @@ impl Server {
                     let stopped: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
                     
                     println!("Server started on http{}://{}:{}/", if opts.https { "s" } else { "" }, host, port);
+
+                    let tls_pool = TlsThreadPool::new(opts.https, 15, opts.https_cert, opts.https_key);
+                    let pool = ThreadPool::new(!opts.https, 15);
+
                     for stream in listener.incoming() {
                         match stream {
                             Ok(stream) => {
                                 let stopped_clone = Arc::clone(&stopped);
                                 if opts.https {
                                     let _ = listener.set_nonblocking(false);
-                                    let acceptor = to_acceptor(opts.https_cert, opts.https_key);
-                                    thread::spawn(move || {
+
+                                    tls_pool.execute(move |acceptor: &SslAcceptor| {
                                         match acceptor.accept(stream) {
                                             Ok(stream) => {
                                                 let _ = stream.get_ref().set_nonblocking(true);
@@ -729,11 +707,10 @@ impl Server {
                                                 //99% of the time this is an ssl handshake error. We should be able to safely ignore this.
                                             }
                                         }
-                                        drop(acceptor);
                                         drop(stopped_clone);
                                     });
                                 } else {
-                                    thread::spawn(move || {
+                                    pool.execute(move || {
                                         let mut socket = Socket::new(Some(stream), None);
                                         while read_header(&mut socket, on_request, opts, &stopped_clone) {
                                             // keep alive

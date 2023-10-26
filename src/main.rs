@@ -4,7 +4,7 @@ use crate::simple_web_server::SimpleWebServer;
 use std::thread;
 use std::time::Duration;
 use crate::server::Settings;
-//use crate::server::generate_dummy_cert_and_key;
+use crate::server::generate_dummy_cert_and_key;
 
 fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
@@ -27,11 +27,30 @@ struct Args {
     
     #[arg(short, long, default_value_t = false, help = "Automatically render index.html")]
     index: bool,
+    
+    #[arg(long, default_value_t = false, help = "Enable HTTPS")]
+    https: bool,
 }
 
 
 fn main() {
     let args = Args::parse();
+
+    let mut cert = String::new();
+    let mut key = String::new();
+    
+    if args.https {
+        match generate_dummy_cert_and_key() {
+            Ok((certt, keyy)) => {
+                cert = certt;
+                key = keyy;
+            }
+            Err(err) => {
+                eprintln!("Error generating certificate and key: {:?}", err);
+            }
+        }
+    }
+
     let settings = Settings {
         path: string_to_static_str(args.path),
         index: args.index,
@@ -55,9 +74,9 @@ fn main() {
         http_auth: false,
         http_auth_username: "く",
         http_auth_password: "password",
-        https: false,
-        https_cert: "",
-        https_key: ""
+        https: args.https,
+        https_cert: string_to_static_str(cert),
+        https_key: string_to_static_str(key)
     };
     let mut server = SimpleWebServer::new(settings);
     println!("Server started: {}", server.start());
