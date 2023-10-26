@@ -987,12 +987,24 @@ static MIME_TYPES: [(&str, &str); 987] = [
     ("zirz", "application/vnd.zul"),
     ("zmm", "application/vnd.handheld-entertainment+xml"),
 ];
+static CHARTSET_TYPES: [&str; 6] = [
+    "text/html",
+    "text/xml",
+    "text/plain",
+    "text/vnd.wap.wml",
+    "application/javascript",
+    "application/rss+xml"
+];
 
-pub fn get_mime_type(extension: &str) -> &str {
+
+pub fn get_mime_type(extension: &str) -> String {
     for (ext, mime_type) in &MIME_TYPES {
         if *ext == extension {
-            return mime_type;
+            if CHARTSET_TYPES.contains(mime_type) {
+                return format!("{}; charset=utf-8", mime_type);
+            }
+            return mime_type.to_string();
         }
     }
-    ""
+    String::new()
 }

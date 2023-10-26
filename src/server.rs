@@ -540,7 +540,11 @@ impl Request<'_> {
             return 404;
         };
         let ext = path.split('.').last().unwrap();
-        self.set_header("content-type", get_mime_type(ext));
+        let ct = get_mime_type(ext);
+        if !ct.is_empty() {
+            println!("{}", ct);
+            self.set_header("content-type", &ct);
+        }
         let size : usize = file.metadata().unwrap().len().try_into().unwrap();
         let mut written : usize = 0;
         
