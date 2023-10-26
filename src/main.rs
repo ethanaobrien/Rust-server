@@ -16,7 +16,12 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[arg(default_value = "/")]
+    path: String,
+
+    #[cfg(windows)]
+    #[arg(default_value = "C:/")]
     path: String,
 
     #[arg(short, long, default_value_t = 8080, help = "Port to listen on")]
@@ -30,6 +35,15 @@ struct Args {
     
     #[arg(long, default_value_t = false, help = "Enable HTTPS")]
     https: bool,
+    
+    #[arg(long, default_value_t = false, help = "Allow PUT requests")]
+    upload: bool,
+
+    #[arg(long, default_value_t = false, help = "Allow DELETE requests")]
+    delete: bool,
+
+    #[arg(long, default_value_t = true, help = "Render directory listing")]
+    dir_listing: bool,
 }
 
 
@@ -58,14 +72,14 @@ fn main() {
         port: args.port,
         spa: false,
         rewrite_to: "",
-        directory_listing: true,
+        directory_listing: args.dir_listing,
         exclude_dot_html: false,
         ipv6: false,
         hidden_dot_files: true,
         cors: false,
-        upload: false,
+        upload: args.upload,
         replace: false,
-        delete: false,
+        delete: args.delete,
         hidden_dot_files_directory_listing: true,
         custom500: "",
         custom404: "",
