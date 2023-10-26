@@ -542,7 +542,6 @@ impl Request<'_> {
         let ext = path.split('.').last().unwrap();
         let ct = get_mime_type(ext);
         if !ct.is_empty() {
-            println!("{}", ct);
             self.set_header("content-type", &ct);
         }
         let size : usize = file.metadata().unwrap().len().try_into().unwrap();
