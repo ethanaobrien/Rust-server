@@ -26,6 +26,9 @@ use crate::server::threadpool::{ThreadPool, TlsThreadPool};
 mod socket;
 use crate::server::socket::Socket;
 
+pub mod wsparser;
+use crate::server::wsparser::WebSocketParser;
+
 extern crate openssl;
 use openssl::ssl::SslAcceptor;
 use openssl::rsa::Rsa;
@@ -35,6 +38,38 @@ use openssl::asn1::Asn1Time;
 use openssl::asn1::Asn1Integer;
 use openssl::x509::X509Builder;
 use openssl::bn::BigNum;
+
+const BASE_CHARS: [u8; 64] = [
+    b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P',
+    b'Q', b'R', b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
+    b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v',
+    b'w', b'x', b'y', b'z', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'+', b'/',
+];
+
+pub fn decode_base64(input: &[u8]) -> String {
+	let mut output: Vec<u8> = Vec::new();
+	for chunk in input.chunks(4) {
+
+    	let a = decode_char(chunk[0]);
+    	let b = decode_char(chunk[1]);
+    	let c = decode_char(chunk[2]);
+    	let d = decode_char(chunk[3]);
+
+    	let dec1 = (a << 2) | (b & 0x30) >> 4;
+    	let dec2 = ((b & 0x0F) << 4) | (c & 0x3C) >> 2;
+    	let dec3 = ((c & 0x03) << 6) | (d);
+
+    	output.push(dec1);
+    	output.push(dec2);
+    	output.push(dec3);
+	}
+
+	String::from_utf8(output).unwrap_or(String::new()).replace('\0', "")
+}
+fn decode_char(input: u8) -> u8 {
+	BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
+}
+
 
 #[allow(dead_code)]
 pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error::ErrorStack> {
@@ -232,6 +267,7 @@ impl Header {
     }
 }
 
+
 #[allow(dead_code)]
 #[allow(unused_assignments)]
 pub struct Request<'a> {
@@ -300,26 +336,27 @@ impl Request<'_> {
         if bytes == 0 {
             return Ok(b"".to_vec());
         }
-        let mut buffer = vec![0; bytes];
-        match self.stream.read(&mut buffer) {
-            Ok(bytes_read) => {
-                if buffer.len() > bytes_read {
-                    //todo: exposed functions should be exact
-                    buffer.truncate(bytes_read);
+        let mut read = 0;
+        let mut buffer = vec![];
+        while read < bytes {
+            let mut reading = vec![0; bytes-read];
+            match self.stream.read(&mut reading) {
+                Ok(bytes_read) => {
+                    read += bytes_read;
+                    //println!("{} bytes read", bytes_read);
+                    reading.truncate(bytes_read);
+                    buffer.append(&mut reading);
                 }
-                //println!("{} bytes read", bytes_read);
-                self.consumed += bytes_read;
-                Ok(buffer)
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(10));
-                Err(false)
-            }
-            Err(_) => {
-                println!("read error");
-                Err(true)
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(_) => {
+                    self.connection_closed = true;
+                    return Err(true);
+                }
             }
         }
+        Ok(buffer)
     }
     //Will truncate the file
     pub fn write_to_file(&mut self, path: &str) -> bool {
@@ -606,7 +643,9 @@ impl Request<'_> {
     }
 }
 
-fn read_header(stream:&mut Socket, on_request:fn(Request, Settings), user_data: Settings, stopped_clone: &Arc<AtomicBool>) -> bool {
+
+
+fn read_header(stream:&mut Socket, on_websocket: fn(WebSocketParser, Settings), on_request: fn(Request, Settings), user_data: Settings, stopped_clone: &Arc<AtomicBool>) -> bool {
     let mut buffer = [0; 1];
     let mut request = String::new();
     
@@ -641,7 +680,14 @@ fn read_header(stream:&mut Socket, on_request:fn(Request, Settings), user_data: 
     if request.is_empty() {
         return false;
     }
-    (on_request)(Request::new(stream, request), user_data);
+    let mut req = Request::new(stream, request.clone());
+    if req.get_header("upgrade").to_lowercase() == "websocket" {
+        let mut ws = WebSocketParser::new(req);
+        ws.do_handshake(request);
+        (on_websocket)(ws, user_data);
+    } else {
+        (on_request)(req, user_data);
+    }
     true
 }
 
@@ -651,12 +697,13 @@ pub struct Server {
     sender: Option<mpsc::Sender<String>>,
     receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     running: bool,
-    on_request: fn(Request, Settings)
+    on_request: fn(Request, Settings),
+    on_websocket: fn(WebSocketParser, Settings)
 }
 
 #[allow(dead_code)]
 impl Server {
-    pub fn new(opts: Settings<'static>, on_request: fn(Request, Settings)) -> Server {
+    pub fn new(opts: Settings<'static>, on_request: fn(Request, Settings), on_websocket: fn(WebSocketParser, Settings)) -> Server {
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         Server {
@@ -664,7 +711,8 @@ impl Server {
             receiver,
             sender: Some(sender),
             running: false,
-            on_request
+            on_request,
+            on_websocket
         }
     }
     pub fn start(&mut self) -> bool {
@@ -675,6 +723,7 @@ impl Server {
         } else if opts.ipv6 { "::1" } else { "127.0.0.1" };
         let port = opts.port;
         let on_request = self.on_request;
+        let on_websocket = self.on_websocket;
         match TcpListener::bind(format!("{}:{}", host, port)) {
             Ok(listener) => {
                 match listener.set_nonblocking(true) {
@@ -701,7 +750,7 @@ impl Server {
                                             Ok(stream) => {
                                                 let _ = stream.get_ref().set_nonblocking(true);
                                                 let mut socket = Socket::new(None, Some(stream));
-                                                while read_header(&mut socket, on_request, opts, &stopped_clone) {
+                                                while read_header(&mut socket, on_websocket, on_request, opts, &stopped_clone) {
                                                     // keep alive
                                                 }
                                                 socket.drop();
@@ -715,7 +764,7 @@ impl Server {
                                 } else {
                                     pool.execute(move || {
                                         let mut socket = Socket::new(Some(stream), None);
-                                        while read_header(&mut socket, on_request, opts, &stopped_clone) {
+                                        while read_header(&mut socket, on_websocket, on_request, opts, &stopped_clone) {
                                             // keep alive
                                         }
                                         socket.drop();

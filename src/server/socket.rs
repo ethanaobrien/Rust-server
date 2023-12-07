@@ -2,6 +2,7 @@ use std::net::TcpStream;
 use openssl::ssl::SslStream;
 use std::io;
 use std::io::{Read, Write};
+use std::io::{Error, ErrorKind};
 
 pub struct Socket {
     stream: Option<TcpStream>,
@@ -46,6 +47,27 @@ impl Socket {
                     None => {
                         println!("Error getting socket type. This should not be possible!!");
                         Ok(())
+                    }
+                }
+            }
+        }
+    }
+    pub fn peek(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self.ssl_stream {
+            Some(ref mut ssl_stream) => {
+                match ssl_stream.ssl_peek(buf) {
+                    Ok(e) => {Ok(e)},
+                    Err(_) => {Err(Error::new(ErrorKind::Other, "oh no!"))}
+                }
+            }
+            None => {
+                match self.stream {
+                    Some(ref mut stream) => {
+                        stream.peek(buf)
+                    }
+                    None => {
+                        println!("Error getting socket type. This should not be possible!!");
+                        Ok(0)
                     }
                 }
             }

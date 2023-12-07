@@ -1,42 +1,12 @@
 use crate::server::Server;
 use crate::server::Settings;
 use crate::server::file_system::GetByPath;
-use crate::server::Request;
+use crate::server::{Request, wsparser::WebSocketParser};
 use crate::server::httpcodes::get_http_message;
+use crate::server::decode_base64;
 
 pub struct SimpleWebServer {
     server: Server
-}
-
-const BASE_CHARS: [u8; 64] = [
-    b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P',
-    b'Q', b'R', b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
-    b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v',
-    b'w', b'x', b'y', b'z', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'+', b'/',
-];
-
-pub fn decode_base64(input: &[u8]) -> String {
-	let mut output: Vec<u8> = Vec::new();
-	for chunk in input.chunks(4) {
-
-    	let a = decode_char(chunk[0]);
-    	let b = decode_char(chunk[1]);
-    	let c = decode_char(chunk[2]);
-    	let d = decode_char(chunk[3]);
-
-    	let dec1 = (a << 2) | (b & 0x30) >> 4;
-    	let dec2 = ((b & 0x0F) << 4) | (c & 0x3C) >> 2;
-    	let dec3 = ((c & 0x03) << 6) | (d);
-
-    	output.push(dec1);
-    	output.push(dec2);
-    	output.push(dec3);
-	}
-
-	String::from_utf8(output).unwrap_or(String::new()).replace('\0', "")
-}
-fn decode_char(input: u8) -> u8 {
-	BASE_CHARS.iter().position(|&c| c == input).unwrap_or(0) as u8
 }
 
 #[allow(dead_code)]
@@ -46,7 +16,7 @@ impl SimpleWebServer {
     }
     pub fn new(opts: Settings<'static>) -> SimpleWebServer {
         SimpleWebServer {
-            server: Server::new(opts, SimpleWebServer::on_request)
+            server: Server::new(opts, SimpleWebServer::on_request, SimpleWebServer::on_websocket)
         }
     }
     pub fn start(&mut self) -> bool {
@@ -68,6 +38,22 @@ impl SimpleWebServer {
             return auth_username == username && auth_password == password;
         }
         false
+    }
+    fn on_websocket(mut res: WebSocketParser, opts: Settings) {
+        while res.connected() {
+            if res.data_available() {
+                if res.is_string {
+                    let data = res.read_string();
+                    res.write_string(&data);
+                } else {
+                    res.write_data(true, res.data_left(), &[], 2);
+                    while res.data_left() > 0 {
+                        let data = res.read_bytes(1024);
+                        res.write_data(false, 0, &data, 2);
+                    }
+                }
+            }
+        }
     }
     fn on_request(mut res:Request, opts: Settings) {
         //todo, this thing
