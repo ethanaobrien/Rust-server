@@ -12,6 +12,7 @@ pub struct WebSocketParser<'a> {
     pub path: String,
     pub origpath: String,
     pub is_string: bool,
+    pub is_continuation: bool,
    // request: Request<'a>,
     stream: &'a mut Socket,
     connection_closed: bool,
@@ -51,7 +52,8 @@ impl WebSocketParser<'_> {
             length: 0,
             mask: vec![0; 4],
             opcode: 1,
-            is_string: false
+            is_string: false,
+            is_continuation: false
         }
     }
     pub fn data_left(&self) -> usize {
@@ -180,16 +182,19 @@ impl WebSocketParser<'_> {
                     opcode = head[0];
                 }
                 self.is_string = opcode == 1;
+                self.is_continuation = opcode == 0;
                 println!("opcode: {}", opcode);
                 
-//              0 - More data -- TODO
+//              0 - More data
 //              1 - Text
 //              2 - Binary
 //              8 - Connection Closed
 //              9 - Ping
 //              10 - Pong
                 
-                self.opcode = opcode;
+                if !self.is_continuation {
+                    self.opcode = opcode;
+                }
                 
                 let mask = (head[1] & 0b10000000) != 0;
                 let msglen = head[1] as usize & 0b01111111;
@@ -285,7 +290,8 @@ impl WebSocketParser<'_> {
         return String::from_utf8_lossy(&self.read_bytes(self.length - self.consumed)).to_string();
     }
     pub fn write_string(&mut self, out: &str) {
-        self.write_binary(out.as_bytes());
+        let data = out.as_bytes();
+        self.write_data(true, data.len(), data, 1);
     }
     pub fn write_binary(&mut self, data: &[u8]) {
         self.write_data(true, data.len(), data, 2);
