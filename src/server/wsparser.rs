@@ -183,7 +183,7 @@ impl WebSocketParser<'_> {
                 }
                 self.is_string = opcode == 1;
                 self.is_continuation = opcode == 0;
-                println!("opcode: {}", opcode);
+                //println!("opcode: {}", opcode);
                 
 //              0 - More data
 //              1 - Text

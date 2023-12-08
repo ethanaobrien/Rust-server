@@ -46,11 +46,25 @@ impl SimpleWebServer {
                     let data = res.read_string();
                     res.write_string(&data);
                 } else {
-                    res.write_data(true, res.data_left(), &[], 2);
-                    while res.data_left() > 0 {
-                        let data = res.read_bytes(1024);
-                        res.write_data(false, 0, &data, 2);
+                    let mut data : Vec<u8> = [].to_vec();
+                    let mut has_more = true;
+                    while has_more {
+                        if data.len() + res.data_left() > 16 * 1024 * 1024 { // 16mb I think
+                            println!("Too much data... {}", data.len() + res.data_left());
+                        }
+                        while res.data_left() > 0 {
+                            let mut new_data = res.read_bytes(1024);
+                            data.append(&mut new_data);
+                        }
+                        if res.data_available() && res.is_continuation {
+                            continue;
+                        }
+                        has_more = false;
+                        break;
                     }
+                    
+                    res.write_data(true, data.len(), &[], 2);
+                    res.write_data(false, 0, &data, 2);
                 }
             }
         }
