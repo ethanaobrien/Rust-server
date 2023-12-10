@@ -39,7 +39,7 @@ impl SimpleWebServer {
         }
         false
     }
-    fn on_websocket(mut res: WebSocketParser, opts: Settings) {
+    fn on_websocket(mut res: WebSocketParser, _opts: Settings) {
         while res.connected() {
             if res.data_available() {
                 if res.is_string {
@@ -47,8 +47,7 @@ impl SimpleWebServer {
                     res.write_string(&data);
                 } else {
                     let mut data : Vec<u8> = [].to_vec();
-                    let mut has_more = true;
-                    while has_more {
+                    loop {
                         if data.len() + res.data_left() > 16 * 1024 * 1024 { // 16mb I think
                             println!("Too much data... {}", data.len() + res.data_left());
                         }
@@ -59,7 +58,6 @@ impl SimpleWebServer {
                         if res.data_available() && res.is_continuation {
                             continue;
                         }
-                        has_more = false;
                         break;
                     }
                     
