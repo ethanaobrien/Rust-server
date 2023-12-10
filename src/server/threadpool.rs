@@ -51,7 +51,7 @@ pub struct TlsThreadPool {
 type TlsJob = Box<dyn FnOnce(&SslAcceptor) + Send + 'static>;
 
 impl TlsThreadPool {
-    pub fn new(enabled: bool, size: usize, https_cert: &str, https_key: &str) -> TlsThreadPool {
+    pub fn new(enabled: bool, https_cert: &str, https_key: &str) -> TlsThreadPool {
         let (sender, receiver) = mpsc::channel();
         if !enabled { return TlsThreadPool {
             workers: Vec::new(),
@@ -64,7 +64,6 @@ impl TlsThreadPool {
             https_cert: String::new(),
             max_threads: 0
         }; }
-        assert!(size > 0);
 
         let receiver = Arc::new(Mutex::new(receiver));
         let start : usize = 0;
@@ -170,7 +169,7 @@ pub struct ThreadPool {
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 impl ThreadPool {
-    pub fn new(enabled: bool, size: usize) -> ThreadPool {
+    pub fn new(enabled: bool) -> ThreadPool {
         let (sender, receiver) = mpsc::channel();
         if !enabled { return ThreadPool {
             workers: Vec::new(),
@@ -181,7 +180,6 @@ impl ThreadPool {
             receiver: Arc::new(Mutex::new(receiver)),
             max_threads: 0
         }; }
-        assert!(size > 0);
 
         let receiver = Arc::new(Mutex::new(receiver));
         let start : usize = 0;

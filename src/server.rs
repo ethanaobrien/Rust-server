@@ -735,8 +735,8 @@ impl Server {
                     
                     println!("Server started on http{}://{}:{}/", if opts.https { "s" } else { "" }, host, port);
 
-                    let mut tls_pool = TlsThreadPool::new(opts.https, 15, opts.https_cert, opts.https_key);
-                    let mut pool = ThreadPool::new(!opts.https, 15);
+                    let mut tls_pool = TlsThreadPool::new(opts.https, opts.https_cert, opts.https_key);
+                    let mut pool = ThreadPool::new(!opts.https);
 
                     for stream in listener.incoming() {
                         match stream {
