@@ -63,7 +63,7 @@ fn main() {
     let default_path = "C:/";
     
     let current_path = env::current_dir().unwrap_or(default_path.into()).into_os_string().into_string().unwrap_or(String::from(default_path)).replace("\\", "/");
-    let path = relative_path(&current_path, &args.path);
+    let path = if args.path.starts_with("/") || args.path.contains(":") { args.path } else { relative_path(&current_path, &args.path) };
 
     let settings = Settings {
         path: string_to_static_str(path),
