@@ -64,8 +64,6 @@ fn main() {
     
     let current_path = env::current_dir().unwrap_or(default_path.into()).into_os_string().into_string().unwrap_or(String::from(default_path)).replace("\\", "/");
     let path = relative_path(&current_path, &args.path);
-    
-    println!("path: {}", path);
 
     let settings = Settings {
         path: string_to_static_str(path),

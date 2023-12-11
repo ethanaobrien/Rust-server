@@ -112,15 +112,23 @@ impl WebSocketParser<'_> {
     fn write_to_stream(&mut self, data:&[u8]) -> bool {
         if self.connection_closed { return false; };
         let mut rv = true;
-        match self.stream.write(data) {
-            Ok(_e) => {
-                rv = true;
-            },
-            Err(_e) => {
-                rv = false;
-                self.connection_closed = true;
-            },
-        };
+        loop {
+            match self.stream.write(data) {
+                Ok(_e) => {
+                    rv = true;
+                    break;
+                },
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::WouldBlock {
+                        thread::sleep(Duration::from_millis(10));
+                    } else {
+                        rv = false;
+                        self.connection_closed = true;
+                        break;
+                    }
+                },
+            };
+        }
         rv
     }
     fn get_header(&self, len: usize, opcode: i32) -> Vec<u8> {
