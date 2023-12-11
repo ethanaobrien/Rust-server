@@ -1,9 +1,9 @@
 mod server;
 mod simple_web_server;
 
-use std::{thread, time::Duration};
+use std::{thread, time::Duration, env};
 use crate::simple_web_server::SimpleWebServer;
-use crate::server::{Settings, generate_dummy_cert_and_key};
+use crate::server::{relative_path, Settings, generate_dummy_cert_and_key};
 use clap::Parser;
 
 fn string_to_static_str(s: String) -> &'static str {
@@ -13,12 +13,7 @@ fn string_to_static_str(s: String) -> &'static str {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    #[arg(default_value = "/")]
-    path: String,
-
-    #[cfg(windows)]
-    #[arg(default_value = "C:/")]
+    #[arg(default_value = "./")]
     path: String,
 
     #[arg(short, long, default_value_t = 8080, help = "Port to listen on")]
@@ -61,9 +56,19 @@ fn main() {
             }
         }
     }
+    
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let default_path = "/";
+    #[cfg(windows)]
+    let default_path = "C:/";
+    
+    let current_path = env::current_dir().unwrap_or(default_path.into()).into_os_string().into_string().unwrap_or(String::from(default_path)).replace("\\", "/");
+    let path = relative_path(&current_path, &args.path);
+    
+    println!("path: {}", path);
 
     let settings = Settings {
-        path: string_to_static_str(args.path),
+        path: string_to_static_str(path),
         index: args.index,
         local_network: args.network,
         port: args.port,

@@ -11,3 +11,4 @@ clap = { version = "4.4.6", features = ["derive"]}
 regex = "1.10.1"
 base64 = "0.21.5"
 sha1 = "0.10.1"
+substring = "1.4.5"

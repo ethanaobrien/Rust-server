@@ -24,7 +24,7 @@ pub mod wsparser;
 mod threadpool;
 mod socket;
 
-
+use substring::Substring;
 use crate::server::{
     mime::get_mime_type,
     httpcodes::get_http_message,
@@ -206,11 +206,14 @@ fn is_hidden(path: &String) -> bool {
 }
 
 #[allow(dead_code)]
-fn relative_path(cur_path: &str, req_path: &str) -> String {
+pub fn relative_path(in_cur_path: &str, req_path: &str) -> String {
     let mut end_with_slash = false;
     if req_path.ends_with('/') {
         end_with_slash = true;
     }
+    let is_windows = in_cur_path.contains(":");
+    let drive_letter_prefix = if is_windows { format!("{}:", in_cur_path.split(":").collect::<Vec<_>>()[0]) } else { String::new() };
+    let cur_path = in_cur_path.substring(drive_letter_prefix.len(), in_cur_path.len());
     
     let mut split1: Vec<&str> = cur_path.split('/').collect();
     let split2: Vec<&str> = req_path.split('/').collect();
@@ -240,7 +243,7 @@ fn relative_path(cur_path: &str, req_path: &str) -> String {
         new_path.push('/');
     }
     
-    new_path
+    format!("{}{}", drive_letter_prefix, new_path)
 }
 
 #[allow(dead_code)]
