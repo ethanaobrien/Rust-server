@@ -1,11 +1,12 @@
-use std::thread;
-use std::str;
-use std::time::Duration;
+use std::{
+    thread,
+    str,
+    time::Duration
+};
 use sha1::{Sha1, Digest};
 use regex::Regex;
 use base64::{Engine as _, engine::{general_purpose}};
-use crate::server::Request;
-use crate::server::Socket;
+use crate::server::{Request, Socket};
 
 // WebSocketParser is not currently thread safe
 pub struct WebSocketParser<'a> {

@@ -1,8 +1,14 @@
-use std::net::TcpStream;
 use openssl::ssl::SslStream;
-use std::io;
-use std::io::{Read, Write};
-use std::io::{Error, ErrorKind};
+use std::{
+    net::TcpStream,
+    io,
+    io::{
+        Read,
+        Write,
+        Error,
+        ErrorKind
+    }
+};
 
 pub struct Socket {
     stream: Option<TcpStream>,

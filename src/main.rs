@@ -1,17 +1,14 @@
 mod server;
 mod simple_web_server;
+
+use std::{thread, time::Duration};
 use crate::simple_web_server::SimpleWebServer;
-use std::thread;
-use std::time::Duration;
-use crate::server::Settings;
-use crate::server::generate_dummy_cert_and_key;
+use crate::server::{Settings, generate_dummy_cert_and_key};
+use clap::Parser;
 
 fn string_to_static_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
-
-use clap::Parser;
-
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

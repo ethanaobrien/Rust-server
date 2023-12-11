@@ -1,43 +1,46 @@
-use std::net::TcpListener;
-use std::thread;
-use std::io::{ Read, Write, SeekFrom, Seek };
-use std::fs;
-use std::fs::File;
-use std::str;
-use std::time::Duration;
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    net::TcpListener,
+    thread,
+    io::{Read, Write, SeekFrom, Seek},
+    fs,
+    fs::File,
+    str,
+    time::Duration,
+    sync::{
+        Arc,
+        mpsc,
+        Mutex,
+        atomic::{AtomicBool, Ordering}
+    }
+};
 
 static DIRECTORY_LISTING: &str = include_str!("directory-listing-template.html");
 
-pub mod file_system;
-
-pub mod mime;
-use crate::server::mime::get_mime_type;
-
-pub mod httpcodes;
-use crate::server::httpcodes::get_http_message;
-
-mod threadpool;
-use crate::server::threadpool::{ThreadPool, TlsThreadPool};
-
-mod socket;
-use crate::server::socket::Socket;
-
-pub mod wsparser;
-use crate::server::wsparser::WebSocketParser;
-
 extern crate openssl;
-use openssl::ssl::SslAcceptor;
-use openssl::rsa::Rsa;
-use openssl::x509::X509Name;
-use openssl::pkey::PKey;
-use openssl::asn1::Asn1Time;
-use openssl::asn1::Asn1Integer;
-use openssl::x509::X509Builder;
-use openssl::bn::BigNum;
+pub mod file_system;
+pub mod mime;
+pub mod httpcodes;
+pub mod wsparser;
+mod threadpool;
+mod socket;
+
+
+use crate::server::{
+    mime::get_mime_type,
+    httpcodes::get_http_message,
+    threadpool::{ThreadPool, TlsThreadPool},
+    socket::Socket,
+    wsparser::WebSocketParser
+};
+
+use openssl::{
+    ssl::SslAcceptor,
+    rsa::Rsa,
+    x509::{X509Builder, X509Name},
+    pkey::PKey,
+    asn1::{Asn1Time, Asn1Integer},
+    bn::BigNum
+};
 
 const BASE_CHARS: [u8; 64] = [
     b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P',

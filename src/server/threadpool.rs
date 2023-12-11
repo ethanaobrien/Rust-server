@@ -1,12 +1,18 @@
 use std::{
-    sync::{mpsc, Arc, Mutex},
+    sync::{
+        mpsc,
+        mpsc::Receiver,
+        Arc,
+        Mutex
+    },
     thread,
 };
-use openssl::ssl::{SslMethod, SslAcceptor};
-use openssl::rsa::Rsa;
-use openssl::x509::X509;
-use openssl::pkey::PKey;
-use std::sync::mpsc::Receiver;
+use openssl::{
+    ssl::{SslMethod, SslAcceptor},
+    rsa::Rsa,
+    x509::X509,
+    pkey::PKey
+};
 
 fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
     
