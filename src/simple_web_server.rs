@@ -259,25 +259,27 @@ impl SimpleWebServer {
         if opts.index && entry.is_directory {
             if let Ok(paths) = std::fs::read_dir(file_path.clone()) {
                 for path in paths {
-                    let file = path.unwrap().path().display().to_string();
-                    let name = file.split('/').last().unwrap_or("");
-                    if name == "index.html" || name == "index.htm" {
-                        if entry.is_hidden() && !opts.hidden_dot_files {
-                            Self::error(res, opts, "", 404);
-                            return;
-                        }
-                        res.set_header("content-type", "text/html; charset=utf-8");
-                        if res.send_file(&(file_path.clone()+name), is_head) == 200 {
-                            return;
-                        }
-                    } else if name == "index.xhtml" || name == "index.xhtm" {
-                        if entry.is_hidden() && !opts.hidden_dot_files {
-                            Self::error(res, opts, "", 404);
-                            return;
-                        }
-                        res.set_header("content-type", "application/xhtml+xml; charset=utf-8");
-                        if res.send_file(&(file_path.clone()+name), is_head) == 200 {
-                            return;
+                    if let Ok(path) = path {
+                        let file = path.path().display().to_string();
+                        let name = file.split('/').last().unwrap_or("");
+                        if name == "index.html" || name == "index.htm" {
+                            if entry.is_hidden() && !opts.hidden_dot_files {
+                                Self::error(res, opts, "", 404);
+                                return;
+                            }
+                            res.set_header("content-type", "text/html; charset=utf-8");
+                            if res.send_file(&(file_path.clone()+name), is_head) == 200 {
+                                return;
+                            }
+                        } else if name == "index.xhtml" || name == "index.xhtm" {
+                            if entry.is_hidden() && !opts.hidden_dot_files {
+                                Self::error(res, opts, "", 404);
+                                return;
+                            }
+                            res.set_header("content-type", "application/xhtml+xml; charset=utf-8");
+                            if res.send_file(&(file_path.clone()+name), is_head) == 200 {
+                                return;
+                            }
                         }
                     }
                 }

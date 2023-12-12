@@ -79,6 +79,23 @@ impl Socket {
             }
         }
     }
+    pub fn shutdown(&mut self) {
+        match self.ssl_stream {
+            Some(ref mut ssl_stream) => {
+                let _ = ssl_stream.shutdown();
+            }
+            None => {
+                match self.stream {
+                    Some(ref mut stream) => {
+                        let _ = stream.shutdown(std::net::Shutdown::Both);
+                    }
+                    None => {
+                        println!("Error getting socket type. This should not be possible!!");
+                    }
+                }
+            }
+        }
+    }
     pub fn drop(self) {
         drop(self.ssl_stream);
         drop(self.stream);
