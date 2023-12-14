@@ -613,25 +613,23 @@ impl Request<'_> {
             //println!("Range Request");
             let range = range_header.split('=').collect::<Vec<_>>()[1].trim();
             let rparts = range.split('-').collect::<Vec<_>>();
-            match rparts[0].parse::<u64>() {
-                Ok(num) => {
-                    file_offset = num;
-                },
-                Err(_e) => {/*nada*/},
-            }
+            file_offset = rparts[0].parse::<u64>().unwrap_or(0);
             //println!("{} {}", range_header, rparts[1].len());
             if rparts[1].is_empty() {
-                //file_end_offset = size - 1;
                 content_length = size - file_offset;
                 
+                if file_offset > file_end_offset {
+                    file_offset = file_end_offset;
+                }
                 self.set_header("content-range", &format!("bytes {}-{}/{}", file_offset, size-1, size));
                 code = if file_offset == 0 { 200 } else { 206 };
             } else {
-                match rparts[1].parse::<u64>() {
-                    Ok(num) => {
-                        file_end_offset = num;
-                    },
-                    Err(_e) => {/*nada*/},
+                let new_end_offset = rparts[1].parse::<u64>().unwrap_or(0);
+                if new_end_offset < file_end_offset {
+                    file_end_offset = new_end_offset;
+                }
+                if file_offset > file_end_offset {
+                    file_offset = file_end_offset;
                 }
                 content_length = file_end_offset - file_offset + 1;
                 self.set_header("content-range", &format!("bytes {}-{}/{}", file_offset, file_end_offset, size));
