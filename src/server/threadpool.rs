@@ -54,24 +54,24 @@ pub struct TlsThreadPool {
 }
 
 macro_rules! new_job {
-  ($count:expr, $start:expr) => {
-    let mut retry_count = 0;
-    loop {
-      if retry_count >= 10 {
-        return;
-      }
-      let Ok(mut locked) = $count.lock() else {
-        retry_count += 1;
-        continue;
-      };
-      if $start {
-        *locked += 1;
-      } else if *locked > 0 {
-        *locked -= 1;
-      }
-      break;
-    }
-  };
+    ($count:expr, $start:expr) => {
+        let mut retry_count = 0;
+        loop {
+            if retry_count >= 10 {
+                return;
+            }
+            let Ok(mut locked) = $count.lock() else {
+                retry_count += 1;
+                continue;
+            };
+            if $start {
+                *locked += 1;
+            } else if *locked > 0 {
+                *locked -= 1;
+            }
+            break;
+        }
+    };
 }
 
 type TlsJob = Box<dyn FnOnce(&SslAcceptor) + Send + 'static>;
@@ -97,7 +97,16 @@ impl TlsThreadPool {
 
         let mut workers = Vec::new();
 
-        workers.push(TlsWorker::new(0, Arc::clone(&receiver), to_acceptor(https_cert, https_key).unwrap(), active_threads.clone()));
+        let mut retry_count = 0;
+        loop {
+            if retry_count > 10 { break; };
+            let Ok(acceptor) = to_acceptor(https_cert, https_key) else {
+                retry_count += 1;
+                continue;
+            };
+            workers.push(TlsWorker::new(0, Arc::clone(&receiver), acceptor, active_threads.clone()));
+            break;
+        }
 
         TlsThreadPool {
             workers,
@@ -119,33 +128,52 @@ impl TlsThreadPool {
         if !self.enabled { return }; 
         let job = Box::new(f);
 
-        let active_threads = *self.active_threads.lock().unwrap();
-
-        if active_threads >= self.threads && self.threads <= self.max_threads {
-            self.workers.push(TlsWorker::new(self.threads, Arc::clone(&self.receiver), to_acceptor(&self.https_cert, &self.https_key).unwrap(), self.active_threads.clone()));
-            //println!("Created a new thread: {}", self.threads);
-            self.threads += 1;
-        }
-
-        self.sender.as_ref().unwrap().send(job).unwrap();
-    }
-}
-
-impl Drop for TlsThreadPool {
-    fn drop(&mut self) {
-        if !self.enabled { return };
-        drop(self.sender.take());
-
-        for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
-
-            if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+        let mut retry = 0;
+        loop {
+            if retry > 10 {
+                println!("Critical error occured! Cannot lock active_threads!");
+                return;
             }
+            let Ok(active_threads) = self.active_threads.lock() else {
+                retry += 1;
+                continue;
+            };
+
+            if *active_threads >= self.threads && self.threads <= self.max_threads {
+                
+                let mut retry_count = 0;
+                loop {
+                    if retry_count > 10 { break; };
+                    let Ok(acceptor) = to_acceptor(&self.https_cert, &self.https_key) else {
+                        retry_count += 1;
+                        continue;
+                    };
+                    self.workers.push(TlsWorker::new(self.threads, Arc::clone(&self.receiver), acceptor, self.active_threads.clone()));
+                    self.threads += 1;
+                    break;
+                }
+                //println!("Created a new thread: {}", self.threads);
+            }
+
+            let mut retry_count = 0;
+            loop {
+                if retry_count > 10 { break; };
+                let Some(sender) = self.sender.as_ref() else {
+                    retry_count += 1;
+                    continue;
+                };
+                let Ok(_) = sender.send(job) else {
+                    println!("Critical Error! Failed to send job to worker!");
+                    return;
+                };
+                break;
+            }
+            break;
         }
     }
 }
 
+#[allow(dead_code)]
 struct TlsWorker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,
@@ -157,8 +185,6 @@ impl TlsWorker {
             let mut last_err = false;
             loop {
                 let message = receiver.lock().unwrap().recv();
-
-
                 match message {
                     Ok(job) => {
                         new_job!(count, true);
@@ -233,33 +259,42 @@ impl ThreadPool {
         if !self.enabled { return }; 
         let job = Box::new(f);
 
-        let active_threads = *self.active_threads.lock().unwrap();
-
-        if active_threads >= self.threads && self.threads <= self.max_threads {
-            self.workers.push(Worker::new(self.threads, Arc::clone(&self.receiver), self.active_threads.clone()));
-            //println!("Created a new thread: {}", self.threads);
-            self.threads += 1;
-        }
-
-        self.sender.as_ref().unwrap().send(job).unwrap();
-    }
-}
-
-impl Drop for ThreadPool {
-    fn drop(&mut self) {
-        if !self.enabled { return };
-        drop(self.sender.take());
-
-        for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
-
-            if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+        let mut retry = 0;
+        loop {
+            if retry > 10 {
+                println!("Critical error occured! Cannot lock active_threads!");
+                return;
             }
+            let Ok(active_threads) = self.active_threads.lock() else {
+                retry += 1;
+                continue;
+            };
+
+            if *active_threads >= self.threads && self.threads <= self.max_threads {
+                self.workers.push(Worker::new(self.threads, Arc::clone(&self.receiver), self.active_threads.clone()));
+                //println!("Created a new thread: {}", self.threads);
+                self.threads += 1;
+            }
+
+            let mut retry_count = 0;
+            loop {
+                if retry_count > 10 { break; };
+                let Some(sender) = self.sender.as_ref() else {
+                    retry_count += 1;
+                    continue;
+                };
+                let Ok(_) = sender.send(job) else {
+                    println!("Critical Error! Failed to send job to worker!");
+                    return;
+                };
+                break;
+            }
+            break;
         }
     }
 }
 
+#[allow(dead_code)]
 struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>,
@@ -271,8 +306,6 @@ impl Worker {
             let mut last_err = false;
             loop {
                 let message = receiver.lock().unwrap().recv();
-
-
                 match message {
                     Ok(job) => {
                         new_job!(count, true);
