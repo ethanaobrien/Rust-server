@@ -14,8 +14,7 @@ use openssl::{
     pkey::PKey
 };
 
-fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
-    
+fn to_acceptor(cert_str: &str, key_str: &str) -> Result<SslAcceptor, openssl::error::ErrorStack> {
     let cert_str = cert_str
         .lines()
         .map(|line| line.trim())
@@ -30,16 +29,16 @@ fn to_acceptor(cert_str: &str, key_str: &str) -> SslAcceptor {
         .collect::<Vec<&str>>()
         .join("\n");
 
-    let cert = X509::from_pem(cert_str.as_bytes()).unwrap();
-    let key = Rsa::private_key_from_pem(key_str.as_bytes()).unwrap();
+    let cert = X509::from_pem(cert_str.as_bytes())?;
+    let key = Rsa::private_key_from_pem(key_str.as_bytes())?;
     
-    let pkey = PKey::from_rsa(key).unwrap();
+    let pkey = PKey::from_rsa(key)?;
     
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key(&pkey).unwrap();
-    builder.set_certificate(&cert).unwrap();
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+    builder.set_private_key(&pkey)?;
+    builder.set_certificate(&cert)?;
     
-    builder.build()
+    Ok(builder.build())
 }
 
 pub struct TlsThreadPool {
@@ -52,6 +51,27 @@ pub struct TlsThreadPool {
     https_cert: String,
     https_key: String,
     max_threads: usize
+}
+
+macro_rules! new_job {
+  ($count:expr, $start:expr) => {
+    let mut retry_count = 0;
+    loop {
+      if retry_count >= 10 {
+        return;
+      }
+      let Ok(mut locked) = $count.lock() else {
+        retry_count += 1;
+        continue;
+      };
+      if $start {
+        *locked += 1;
+      } else if *locked > 0 {
+        *locked -= 1;
+      }
+      break;
+    }
+  };
 }
 
 type TlsJob = Box<dyn FnOnce(&SslAcceptor) + Send + 'static>;
@@ -77,7 +97,7 @@ impl TlsThreadPool {
 
         let mut workers = Vec::new();
 
-        workers.push(TlsWorker::new(0, Arc::clone(&receiver), to_acceptor(https_cert, https_key), active_threads.clone()));
+        workers.push(TlsWorker::new(0, Arc::clone(&receiver), to_acceptor(https_cert, https_key).unwrap(), active_threads.clone()));
 
         TlsThreadPool {
             workers,
@@ -102,7 +122,7 @@ impl TlsThreadPool {
         let active_threads = *self.active_threads.lock().unwrap();
 
         if active_threads >= self.threads && self.threads <= self.max_threads {
-            self.workers.push(TlsWorker::new(self.threads, Arc::clone(&self.receiver), to_acceptor(&self.https_cert, &self.https_key), self.active_threads.clone()));
+            self.workers.push(TlsWorker::new(self.threads, Arc::clone(&self.receiver), to_acceptor(&self.https_cert, &self.https_key).unwrap(), self.active_threads.clone()));
             //println!("Created a new thread: {}", self.threads);
             self.threads += 1;
         }
@@ -141,9 +161,9 @@ impl TlsWorker {
 
                 match message {
                     Ok(job) => {
-                        *count.lock().unwrap() += 1;
+                        new_job!(count, true);
                         job(&acceptor);
-                        *count.lock().unwrap() -= 1;
+                        new_job!(count, false);
                     }
                     Err(_) => {
                         if last_err { break; }
@@ -255,9 +275,9 @@ impl Worker {
 
                 match message {
                     Ok(job) => {
-                        *count.lock().unwrap() += 1;
+                        new_job!(count, true);
                         job();
-                        *count.lock().unwrap() -= 1;
+                        new_job!(count, false);
                     }
                     Err(_) => {
                         if last_err { break; }

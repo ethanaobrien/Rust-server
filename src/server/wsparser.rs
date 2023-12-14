@@ -26,9 +26,10 @@ pub struct WebSocketParser<'a> {
 }
 
 fn key_to_accept(data: &str) -> String {
-    let regex = Regex::new(r"Sec-WebSocket-Key: (.*)").unwrap();
-    let matches = regex.captures(data).unwrap();
-    let key = matches.get(1).unwrap().as_str().trim();
+    let Ok(regex) = Regex::new(r"Sec-WebSocket-Key: (.*)") else { return String::new(); };
+    let Some(matches) = regex.captures(data) else { return String::new(); };
+    let Some(cmatch) = matches.get(1) else { return String::new(); };
+    let key = cmatch.as_str().trim();
 
     let mut hasher = Sha1::new();
     hasher.update(key.as_bytes());
@@ -63,13 +64,19 @@ impl WebSocketParser<'_> {
     pub fn do_handshake(&mut self, header: String) {
         if self.handshake_done { return; }
         self.handshake_done = true;
+        let key = key_to_accept(&header);
+        if key == String::new() {
+            self.connection_closed = true;
+            self.stream.shutdown();
+            return;
+        }
         
         let response = format!(
             "HTTP/1.1 101 Switching Protocols\r\n\
             Connection: Upgrade\r\n\
             Upgrade: websocket\r\n\
             Sec-WebSocket-Accept: {}\r\n\r\n",
-            key_to_accept(&header)
+            key
         );
 
         self.write_to_stream(response.as_bytes());

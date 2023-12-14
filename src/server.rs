@@ -95,7 +95,7 @@ pub fn generate_dummy_cert_and_key() -> Result<(String, String), openssl::error:
 
     x509_builder.set_issuer_name(&subject_name)?;
 
-    let serial_number_bn = BigNum::from_u32(1).unwrap();
+    let serial_number_bn = BigNum::from_u32(1)?;
 
     let serial_number = Asn1Integer::from_bn(&serial_number_bn)?;
     x509_builder.set_serial_number(&serial_number)?;
@@ -462,7 +462,8 @@ impl Request<'_> {
         let mut parts: Vec<String> = binding.split('-').map(|s| s.to_string()).collect();
         for part in parts.iter_mut() {
             *part = part.to_lowercase();
-            let capitalized_char = part.chars().next().unwrap().to_uppercase().next().unwrap();
+            let Some(cc) = part.chars().next() else { continue; };
+            let Some(capitalized_char) = cc.to_uppercase().next() else { continue; };
             let mut result = String::with_capacity(part.len());
             result.push(capitalized_char);
             result.push_str(&part[1..]);
@@ -542,7 +543,7 @@ impl Request<'_> {
         let mut to_send = String::from("<!DOCTYPE html>\n<html dir=\"ltr\" lang=\"en\n<head><meta charset=\"utf-8\"><meta name=\"google\" value=\"notranslate\"><title id=\"title\"></title>\n</head>\n<body><div id=\"staticListing\"><style>li.directory {background:#aab}</style><a href=\"../\">parent</a><ul>");
         let mut js_listing = String::new();
         for path in paths {
-            let file = path.unwrap();
+            let Ok(file) = path else { continue; };
             let name = file.path().display().to_string();
             if !dot_files && is_hidden(&name) { continue; };
             let file_name = name.split('/').last().unwrap_or("");
@@ -587,21 +588,24 @@ impl Request<'_> {
             return 500;
         }
         //println!("Rendering file at {}", path);
-        let read_chunk_size : usize = 1024 * 1024 * 8;
+        let read_chunk_size : u64 = 1024 * 1024 * 8;
         let Ok(mut file) = File::open(path) else {
             return 404;
         };
-        let ext = path.split('.').last().unwrap();
+        let ext = path.split('.').last().unwrap_or("");
         let ct = get_mime_type(ext);
         if !ct.is_empty() {
             self.set_header("content-type", &ct);
         }
-        let size : usize = file.metadata().unwrap().len().try_into().unwrap();
-        let mut written : usize = 0;
+        let Ok(metadata) = file.metadata() else {
+            return 500;
+        };
+        let size : u64 = metadata.len();
+        let mut written : u64 = 0;
         
-        let mut file_offset : usize = 0;
-        let mut file_end_offset : usize = size - 1;
-        let mut content_length : usize = size;
+        let mut file_offset : u64 = 0;
+        let mut file_end_offset : u64 = size - 1;
+        let mut content_length : u64 = size;
         let mut code = 200;
         let range_header = self.get_header("Range");
         //println!("{}", self.get_header("Range"));
@@ -609,7 +613,7 @@ impl Request<'_> {
             //println!("Range Request");
             let range = range_header.split('=').collect::<Vec<_>>()[1].trim();
             let rparts = range.split('-').collect::<Vec<_>>();
-            match rparts[0].parse::<usize>() {
+            match rparts[0].parse::<u64>() {
                 Ok(num) => {
                     file_offset = num;
                 },
@@ -623,7 +627,7 @@ impl Request<'_> {
                 self.set_header("content-range", &format!("bytes {}-{}/{}", file_offset, size-1, size));
                 code = if file_offset == 0 { 200 } else { 206 };
             } else {
-                match rparts[1].parse::<usize>() {
+                match rparts[1].parse::<u64>() {
                     Ok(num) => {
                         file_end_offset = num;
                     },
@@ -642,12 +646,12 @@ impl Request<'_> {
             self.end();
             return 200;
         }
-        let Ok(_) = file.seek(SeekFrom::Start(file_offset.try_into().unwrap())) else { return 500; };
+        let Ok(_) = file.seek(SeekFrom::Start(file_offset)) else { return 500; };
         while written < content_length {
             if self.connection_closed { break; };
-            let chunk_size : usize = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
+            let chunk_size : u64 = if content_length-written > read_chunk_size { read_chunk_size } else { content_length-written };
             if chunk_size == 0 { break; };
-            let mut buffer = vec![0; chunk_size];
+            let mut buffer = vec![0; chunk_size as usize];
             let Ok(_) = file.read(&mut buffer) else { todo!() };
             self.write(&buffer);
             written += chunk_size
@@ -668,6 +672,7 @@ fn read_header(stream:&mut Socket, on_websocket: fn(WebSocketParser, Settings), 
         match stream.read(&mut buffer) {
             Ok(bytes_read) => {
                 if bytes_read == 0 {
+                    stream.shutdown();
                     return false;
                 }
                 match &String::from_utf8(buffer[..bytes_read].to_vec()) {
@@ -675,7 +680,10 @@ fn read_header(stream:&mut Socket, on_websocket: fn(WebSocketParser, Settings), 
                         request += s;
                     },
                     //an https request to an http server? Either way, we cant do anything with the data
-                    Err(_) => { return false; },
+                    Err(_) => {
+                        stream.shutdown();
+                        return false;
+                    },
                 }
                 
                 if request.ends_with("\r\n\r\n") {
@@ -693,6 +701,7 @@ fn read_header(stream:&mut Socket, on_websocket: fn(WebSocketParser, Settings), 
         }
     }
     if request.is_empty() {
+        stream.shutdown();
         return false;
     }
     let mut req = Request::new(stream, request.clone());
@@ -789,7 +798,10 @@ impl Server {
                                 
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                                let message = receiver.lock().unwrap().try_recv();
+                                let Ok(handler) = receiver.lock() else {
+                                    continue;
+                                };
+                                let message = handler.try_recv();
                                 if let Ok(job) = message {
                                     if job == *"kill" {
                                         stopped.store(true, Ordering::Relaxed);
@@ -816,6 +828,29 @@ impl Server {
         if !self.running { return; };
         println!("Killing server");
         self.running = false;
-        self.sender.as_ref().unwrap().send(String::from("kill")).unwrap();
+        let Some(sender) = self.sender.as_ref() else {
+            self.terminate_failed(0);
+            return;
+        };
+        let Ok(_) = sender.send(String::from("kill")) else {
+            self.terminate_failed(0);
+            return;
+        };
+        println!("Server has been killed");
+    }
+    pub fn terminate_failed(&mut self, count: i32) {
+        println!("Failed to kill server. Retrying...");
+        if !self.running { return; };
+        println!("Killing server");
+        self.running = false;
+        let Some(sender) = self.sender.as_ref() else {
+            self.terminate_failed(count + 1);
+            return;
+        };
+        let Ok(_) = sender.send(String::from("kill")) else {
+            self.terminate_failed(count + 1);
+            return;
+        };
+        println!("Server has been killed");
     }
 }
