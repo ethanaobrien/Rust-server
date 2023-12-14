@@ -146,6 +146,7 @@ pub struct Settings<'a> {
     pub https: bool,
     pub https_cert: &'a str,
     pub https_key: &'a str,
+    pub max_threads: usize
 }
 
 #[allow(dead_code)]
@@ -749,8 +750,8 @@ impl Server {
                     
                     println!("Server started on http{}://{}:{}/", if opts.https { "s" } else { "" }, host, port);
 
-                    let mut tls_pool = TlsThreadPool::new(opts.https, opts.https_cert, opts.https_key);
-                    let mut pool = ThreadPool::new(!opts.https);
+                    let mut tls_pool = TlsThreadPool::new(opts.https, opts.max_threads, opts.https_cert, opts.https_key);
+                    let mut pool = ThreadPool::new(!opts.https, opts.max_threads);
 
                     for stream in listener.incoming() {
                         match stream {

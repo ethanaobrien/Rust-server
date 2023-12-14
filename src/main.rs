@@ -36,6 +36,9 @@ struct Args {
 
     #[arg(long, default_value_t = true, help = "Render directory listing")]
     dir_listing: bool,
+    
+    #[arg(short, long, default_value_t = 64, help = "Maximum server response threads")]
+    max_threads: usize
 }
 
 
@@ -90,7 +93,8 @@ fn main() {
         http_auth_password: "password",
         https: args.https,
         https_cert: string_to_static_str(cert),
-        https_key: string_to_static_str(key)
+        https_key: string_to_static_str(key),
+        max_threads: args.max_threads
     };
     let mut server = SimpleWebServer::new(settings);
     println!("Server started: {}", server.start());
