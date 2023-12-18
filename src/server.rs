@@ -21,14 +21,14 @@ pub mod file_system;
 pub mod mime;
 pub mod httpcodes;
 pub mod wsparser;
-mod threadpool;
+mod socket_handler;
 mod socket;
 
 use substring::Substring;
 use crate::server::{
     mime::get_mime_type,
     httpcodes::get_http_message,
-    threadpool::SocketHandler,
+    socket_handler::SocketHandler,
     socket::Socket,
     wsparser::WebSocketParser
 };
