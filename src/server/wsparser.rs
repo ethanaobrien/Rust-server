@@ -59,6 +59,7 @@ impl WebSocketParser<'_> {
         }
     }
     pub fn data_left(&self) -> usize {
+        if self.connection_closed { return 0; };
         return self.length - self.consumed;
     }
     pub fn do_handshake(&mut self, header: String) {
@@ -180,9 +181,12 @@ impl WebSocketParser<'_> {
     }
     pub fn data_available(&mut self) -> bool {
         if self.connection_closed { return false; }
-        let mut buf = [0; 10];
+        let mut buf = [0; 5];
         let len = self.stream.peek(&mut buf).unwrap_or(0);
-        if len == 0 { return false; }
+        if len == 0 {
+            self.connection_closed = true;
+            return false;
+        }
         if self.length - self.consumed > 0 { return true; }
         
         self.consumed = 0;
@@ -271,6 +275,7 @@ impl WebSocketParser<'_> {
                             if msglen == 0 || opcode == 9 { return self.data_available(); }
                         },
                         Err(_) => {
+                            self.stream.shutdown();
                             self.connection_closed = true;
                         }
                     }

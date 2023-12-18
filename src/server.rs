@@ -384,6 +384,8 @@ impl Request<'_> {
                     }
                 }
                 Err(fatal) => {
+                    self.connection_closed = true;
+                    self.stream.shutdown();
                     if fatal { return false; };
                 }
             }
@@ -396,6 +398,8 @@ impl Request<'_> {
             match self.read(read_chunk_size) {
                 Ok(_) => {},
                 Err(fatal) => {
+                    self.connection_closed = true;
+                    self.stream.shutdown();
                     if fatal { return; };
                 }
             }
@@ -651,7 +655,7 @@ impl Request<'_> {
             let mut buffer = vec![0; chunk_size as usize];
             let Ok(_) = file.read(&mut buffer) else { todo!() };
             self.write(&buffer);
-            written += chunk_size
+            written += chunk_size;
         }
         drop(file);
         self.end();
