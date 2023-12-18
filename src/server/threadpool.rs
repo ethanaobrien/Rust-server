@@ -70,7 +70,7 @@ impl SocketHandler {
         if !self.running { return; };
         if !self.https {
             thread::spawn(move || {
-                f(Socket::new(Some(stream), None));
+                f(Socket::new(Ok(stream)));
             });
             return;
         }
@@ -78,7 +78,7 @@ impl SocketHandler {
         thread::spawn(move || {
             match acceptor.accept(stream) {
                 Ok(stream) => {
-                    f(Socket::new(None, Some(stream)));
+                    f(Socket::new(Err(stream)));
                 }
                 Err (ref _e) => {
                     //99% of the time this is an ssl handshake error. We should be able to safely ignore this.

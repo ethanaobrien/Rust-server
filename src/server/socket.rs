@@ -11,93 +11,60 @@ use std::{
 };
 
 pub struct Socket {
-    stream: Option<TcpStream>,
-    ssl_stream: Option<SslStream<TcpStream>>
+    stream: Result<TcpStream, SslStream<TcpStream>>
 }
 
 impl Socket {
-    pub fn new(stream: Option<TcpStream>, ssl: Option<SslStream<TcpStream>>) -> Socket {
+    pub fn new(stream: Result<TcpStream, SslStream<TcpStream>>) -> Socket {
         Socket {
-            stream,
-            ssl_stream: ssl
+            stream
         }
     }
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self.ssl_stream {
-            Some(ref mut ssl_stream) => {
-                ssl_stream.read(buf)
+        match self.stream {
+            Ok(ref mut stream) => {
+                stream.read(buf)
             }
-            None => {
-                match self.stream {
-                    Some(ref mut stream) => {
-                        stream.read(buf)
-                    }
-                    None => {
-                        println!("Error getting socket type. This should not be possible!!");
-                        Ok(0)
-                    }
-                }
+            Err(ref mut stream) => {
+                stream.read(buf)
             }
         }
     }
     pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
-        match self.ssl_stream {
-            Some(ref mut ssl_stream) => {
-                ssl_stream.write_all(buf)
+        match self.stream {
+            Ok(ref mut stream) => {
+                stream.write_all(buf)
             }
-            None => {
-                match self.stream {
-                    Some(ref mut stream) => {
-                        stream.write_all(buf)
-                    }
-                    None => {
-                        println!("Error getting socket type. This should not be possible!!");
-                        Ok(())
-                    }
-                }
+            Err(ref mut stream) => {
+                stream.write_all(buf)
             }
         }
     }
     pub fn peek(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self.ssl_stream {
-            Some(ref mut ssl_stream) => {
-                match ssl_stream.ssl_peek(buf) {
+        match self.stream {
+            Ok(ref mut stream) => {
+                stream.peek(buf)
+            }
+            Err(ref mut stream) => {
+                match stream.ssl_peek(buf) {
                     Ok(e) => {Ok(e)},
                     Err(_) => {Err(Error::new(ErrorKind::Other, "oh no!"))}
-                }
-            }
-            None => {
-                match self.stream {
-                    Some(ref mut stream) => {
-                        stream.peek(buf)
-                    }
-                    None => {
-                        println!("Error getting socket type. This should not be possible!!");
-                        Ok(0)
-                    }
                 }
             }
         }
     }
     pub fn shutdown(&mut self) {
-        match self.ssl_stream {
-            Some(ref mut ssl_stream) => {
-                let _ = ssl_stream.shutdown();
+        match self.stream {
+            Ok(ref mut stream) => {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
             }
-            None => {
-                match self.stream {
-                    Some(ref mut stream) => {
-                        let _ = stream.shutdown(std::net::Shutdown::Both);
-                    }
-                    None => {
-                        println!("Error getting socket type. This should not be possible!!");
-                    }
-                }
+            Err(ref mut stream) => {
+                let _ = stream.shutdown();
             }
         }
     }
-    pub fn drop(self) {
-        drop(self.ssl_stream);
+    pub fn drop(mut self) {
+        self.shutdown();
         drop(self.stream);
     }
 }
