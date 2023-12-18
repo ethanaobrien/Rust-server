@@ -28,13 +28,12 @@ use substring::Substring;
 use crate::server::{
     mime::get_mime_type,
     httpcodes::get_http_message,
-    threadpool::{ThreadPool, TlsThreadPool},
+    threadpool::SocketHandler,
     socket::Socket,
     wsparser::WebSocketParser
 };
 
 use openssl::{
-    ssl::SslAcceptor,
     rsa::Rsa,
     x509::{X509Builder, X509Name},
     pkey::PKey,
@@ -757,43 +756,19 @@ impl Server {
                     
                     println!("Server started on http{}://{}:{}/", if opts.https { "s" } else { "" }, host, port);
 
-                    let mut tls_pool = TlsThreadPool::new(opts.https, opts.max_threads, opts.https_cert, opts.https_key);
-                    let mut pool = ThreadPool::new(!opts.https, opts.max_threads);
+                    let mut handler = SocketHandler::new(opts.https, opts.https_cert, opts.https_key);
 
                     for stream in listener.incoming() {
                         match stream {
                             Ok(stream) => {
                                 let stopped_clone = Arc::clone(&stopped);
-                                if opts.https {
-                                    let _ = listener.set_nonblocking(false);
-
-                                    tls_pool.execute(move |acceptor: &SslAcceptor| {
-                                        match acceptor.accept(stream) {
-                                            Ok(stream) => {
-                                                let _ = stream.get_ref().set_nonblocking(true);
-                                                let mut socket = Socket::new(None, Some(stream));
-                                                while read_header(&mut socket, on_websocket, on_request, opts, &stopped_clone) {
-                                                    // keep alive
-                                                }
-                                                socket.drop();
-                                            }
-                                            Err(ref _e) => {
-                                                //99% of the time this is an ssl handshake error. We should be able to safely ignore this.
-                                            }
-                                        }
-                                        drop(stopped_clone);
-                                    });
-                                } else {
-                                    pool.execute(move || {
-                                        let mut socket = Socket::new(Some(stream), None);
-                                        while read_header(&mut socket, on_websocket, on_request, opts, &stopped_clone) {
-                                            // keep alive
-                                        }
-                                        socket.drop();
-                                        drop(stopped_clone);
-                                    });
-                                }
-                                
+                                handler.execute(stream, move |mut socket| {
+                                    while read_header(&mut socket, on_websocket, on_request, opts, &stopped_clone) {
+                                        // keep alive
+                                    }
+                                    socket.drop();
+                                    drop(stopped_clone);
+                                });
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 let Ok(handler) = receiver.lock() else {
