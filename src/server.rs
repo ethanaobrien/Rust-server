@@ -348,6 +348,10 @@ impl Request<'_> {
             let mut reading = vec![0; bytes-read];
             match self.stream.read(&mut reading) {
                 Ok(bytes_read) => {
+                    if bytes_read == 0 {
+                        self.connection_closed = true;
+                        return Err(true);
+                    }
                     read += bytes_read;
                     //println!("{} bytes read", bytes_read);
                     reading.truncate(bytes_read);
