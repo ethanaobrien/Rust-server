@@ -144,8 +144,7 @@ pub struct Settings<'a> {
     pub index: bool,
     pub https: bool,
     pub https_cert: &'a str,
-    pub https_key: &'a str,
-    pub max_threads: usize
+    pub https_key: &'a str
 }
 
 #[allow(dead_code)]
