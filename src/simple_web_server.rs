@@ -99,6 +99,8 @@ impl SimpleWebServer {
             Self::put(res, opts);
         } else if res.method == "DELETE" {
             Self::delete(res, opts);
+        } else if res.method == "OPTIONS" {
+            res.end();
         } else {
             Self::error(res, opts, "", 501);
         }
