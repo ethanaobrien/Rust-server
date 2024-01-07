@@ -413,6 +413,9 @@ impl Request<'_> {
         let msg = &String::from_utf8_lossy(&read[..read.len()]);
         msg.to_string()
     }
+    pub fn read_all_string(&mut self) -> String {
+        self.read_string(self.length - self.consumed)
+    }
     fn send_headers(&mut self) {
         if self.headers_written {
             println!("Headers already sent!");
