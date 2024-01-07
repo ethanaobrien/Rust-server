@@ -25,7 +25,7 @@ mod socket_handler;
 mod socket;
 
 use substring::Substring;
-use crate::server::{
+use crate::{
     mime::get_mime_type,
     httpcodes::get_http_message,
     socket_handler::SocketHandler,

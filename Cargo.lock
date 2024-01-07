@@ -331,7 +331,6 @@ name = "server"
 version = "0.1.5"
 dependencies = [
  "base64",
- "clap",
  "openssl",
  "regex",
  "sha1",
@@ -347,6 +346,14 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "simplewebserver"
+version = "0.1.5"
+dependencies = [
+ "clap",
+ "server",
 ]
 
 [[package]]

@@ -1,9 +1,8 @@
-mod server;
 mod simple_web_server;
 
 use std::{thread, time::Duration, env};
 use crate::simple_web_server::SimpleWebServer;
-use crate::server::{relative_path, Settings, generate_dummy_cert_and_key};
+use server::{relative_path, Settings, generate_dummy_cert_and_key};
 use clap::Parser;
 
 fn string_to_static_str(s: String) -> &'static str {

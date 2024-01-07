@@ -6,7 +6,7 @@ use std::{
 use sha1::{Sha1, Digest};
 use regex::Regex;
 use base64::{Engine as _, engine::{general_purpose}};
-use crate::server::{Request, Socket};
+use crate::{Request, Socket};
 
 // WebSocketParser is not currently thread safe
 pub struct WebSocketParser<'a> {

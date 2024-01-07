@@ -8,7 +8,7 @@ use openssl::{
 };
 
 use std::net::TcpStream;
-use crate::server::Socket;
+use crate::Socket;
 
 fn to_acceptor(cert_str: &str, key_str: &str) -> Result<SslAcceptor, openssl::error::ErrorStack> {
     let cert_str = cert_str
